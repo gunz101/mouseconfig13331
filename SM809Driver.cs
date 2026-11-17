@@ -1529,10 +1529,6 @@ namespace SM809
             Close();
         }
 
-        private static string AppDir()
-        {
-            return Path.GetDirectoryName(Application.ExecutablePath);
-        }
 
         private Panel _header;
 
@@ -1636,13 +1632,12 @@ namespace SM809
             _body.Controls.Add(table);
             table.BringToFront();
 
+            // foto embutida no .exe: a release distribui só o executável
             Image photo = null;
-            string img = Path.Combine(AppDir(), "images", "mouse_nr.png");
-            if (File.Exists(img))
-            {
-                try { photo = Image.FromFile(img); }
-                catch (Exception) { }
-            }
+            using (var s = typeof(MainForm).Assembly.GetManifestResourceStream("SM809.mouse_nr.png"))
+                if (s != null)
+                    using (var loaded = new Bitmap(s))
+                        photo = new Bitmap(loaded);
             _map = new ButtonMapView(photo);
             _map.Dock = DockStyle.Fill;
             _map.Margin = new Padding(6);
