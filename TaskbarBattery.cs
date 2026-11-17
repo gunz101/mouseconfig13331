@@ -28,6 +28,7 @@ namespace SM809
     {
         public const string WindowTitle = "SM809BatteryStrip";
         public const string MouseGlyph = "";
+        public const string HeadsetGlyph = "";
         private const string BoltGlyph = "";
         private const int WmItems = 0x8001;
         private const int WmStop = 0x8002;
@@ -283,6 +284,8 @@ namespace SM809
             {
                 var ti = ToolInfo("");
                 Win32.SendMessage(_tip, Win32.TTM_ADDTOOLW, IntPtr.Zero, ref ti);
+                // sem largura máxima o tooltip ignora as quebras de linha (uma linha por dispositivo)
+                Win32.SendMessage(_tip, Win32.TTM_SETMAXTIPWIDTH, IntPtr.Zero, (IntPtr)600);
             }
             _painted = null;
             return true;
@@ -492,6 +495,7 @@ namespace SM809
         public const int TTM_RELAYEVENT = 0x0407;
         public const int TTM_ADDTOOLW = 0x0432;
         public const int TTM_UPDATETIPTEXTW = 0x0439;
+        public const int TTM_SETMAXTIPWIDTH = 0x0418;
         public const int WM_MOUSEACTIVATE = 0x0021;
         public const int WM_MOUSEMOVE = 0x0200;
         public const int WM_LBUTTONDOWN = 0x0201;
@@ -570,6 +574,8 @@ namespace SM809
         public static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, ref TOOLINFO l);
         [DllImport("user32.dll")]
         public static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, ref MSG l);
+        [DllImport("user32.dll")]
+        public static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, IntPtr l);
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern IntPtr CreateWindowEx(int exStyle, string cls, string title, int style,
             int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
