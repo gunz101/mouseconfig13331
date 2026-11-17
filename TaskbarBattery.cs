@@ -163,7 +163,7 @@ namespace SM809
             return theme;
         }
 
-        private static Font IconFont(float px)
+        internal static Font IconFont(float px)
         {
             foreach (var name in new[] { "Segoe Fluent Icons", "Segoe MDL2 Assets" })
             {
