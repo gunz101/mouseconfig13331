@@ -3609,13 +3609,6 @@ namespace SM809
                     ReapplyHeadless();
                     return;
                 }
-                if (a == "--uicheck")
-                {
-                    Application.EnableVisualStyles();
-                    Application.SetCompatibleTextRenderingDefault(false);
-                    UiCheck();
-                    return;
-                }
             }
             bool created;
             using (var mutex = new Mutex(true, "SM809LocalDriver", out created))
@@ -3630,59 +3623,6 @@ namespace SM809
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new MainForm());
             }
-        }
-
-        // Valida a interface: procura controles irmãos visíveis se sobrepondo,
-        // no tamanho mínimo e depois com a janela ampliada (teste de resize).
-        private static void UiCheck()
-        {
-            var f = new MainForm();
-            f.StartPosition = FormStartPosition.Manual;
-            f.Location = new Point(-4000, -4000);   // fora da tela
-            f.Show();
-            Application.DoEvents();
-            int problems = 0;
-            Console.WriteLine("--- tamanho minimo (" + f.ClientSize.Width + "x" + f.ClientSize.Height + ") ---");
-            CheckOverlaps(f, ref problems);
-            f.Size = new Size(f.Width + 360, f.Height + 240);
-            Application.DoEvents();
-            Console.WriteLine("--- ampliada (" + f.ClientSize.Width + "x" + f.ClientSize.Height + ") ---");
-            CheckOverlaps(f, ref problems);
-            f.Close();
-            Console.WriteLine(problems == 0
-                ? "UI OK: nenhuma sobreposicao nos dois tamanhos"
-                : problems + " sobreposicoes encontradas");
-        }
-
-        private static void CheckOverlaps(Control parent, ref int problems)
-        {
-            // FlowLayoutPanel e TabControl gerenciam o proprio layout
-            if (!(parent is FlowLayoutPanel) && !(parent is TabControl))
-            {
-                var kids = new List<Control>();
-                foreach (Control c in parent.Controls)
-                    if (c.Visible && c.Width > 0 && c.Height > 0) kids.Add(c);
-                for (int i = 0; i < kids.Count; i++)
-                    for (int j = i + 1; j < kids.Count; j++)
-                    {
-                        var r = Rectangle.Intersect(kids[i].Bounds, kids[j].Bounds);
-                        if (r.Width > 2 && r.Height > 2)
-                        {
-                            problems++;
-                            Console.WriteLine(string.Format("  OVERLAP em {0}: [{1}] x [{2}] ({3}x{4}px)",
-                                parent.GetType().Name, Describe(kids[i]), Describe(kids[j]), r.Width, r.Height));
-                        }
-                    }
-            }
-            foreach (Control c in parent.Controls) CheckOverlaps(c, ref problems);
-        }
-
-        private static string Describe(Control c)
-        {
-            string t = c.Text ?? "";
-            t = t.Replace("\r", " ").Replace("\n", " ");
-            if (t.Length > 30) t = t.Substring(0, 30);
-            return c.GetType().Name + " '" + t + "'";
         }
 
         private static void ReapplyHeadless()
