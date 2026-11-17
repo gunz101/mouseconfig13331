@@ -240,6 +240,11 @@ namespace SM809
         private int[] _dpiLevels;
         private int _dpiCount;
         private DateTime _cfgStamp;
+        private readonly AlertLatch _alert = new AlertLatch();
+        private readonly ToolStripMenuItem _autoStartItem;
+        private bool _stripShowing = true;
+        private string _iconKey = "app";
+        private IntPtr _numberIcon;
 
         public TrayHost(bool showWindow)
         {
@@ -250,8 +255,11 @@ namespace SM809
             open.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
             _menu.Renderer = new DarkMenuRenderer();
             _menu.Font = new Font("Segoe UI", 9f);
+            _autoStartItem = new ToolStripMenuItem("Iniciar com o Windows", null, delegate { ToggleAutoStart(); });
             _menu.Items.Add(open);
+            _menu.Items.Add(_autoStartItem);
             _menu.Items.Add(new ToolStripSeparator());
+            _menu.Opening += delegate { _autoStartItem.Checked = AutoStart.Default.IsEnabled; };
             _menu.Items.Add(new ToolStripMenuItem("Sair", null, delegate { Exit(); }));
 
             _tray.Icon = _appIcon;
@@ -268,6 +276,7 @@ namespace SM809
 
             _strip.Clicked += delegate { OnUi(ShowMainWindow); };
             _strip.RightClicked += delegate { OnUi(ShowMenuAtCursor); };
+            _strip.AvailabilityChanged += delegate(bool ok) { OnUi(delegate { OnStripAvailability(ok); }); };
             _strip.Start();
 
             _poll.Interval = BackgroundPollMs;
@@ -284,6 +293,7 @@ namespace SM809
             };
             _reconnect.Start();
 
+            AutoStart.Default.FixPathIfMoved(Application.ExecutablePath);
             _dev.Connect();
             Refresh();
             if (showWindow) ShowMainWindow();
@@ -312,6 +322,7 @@ namespace SM809
             _strip.Dispose();
             _tray.Visible = false;
             _tray.Dispose();
+            if (_numberIcon != IntPtr.Zero) Win32.DestroyIcon(_numberIcon);
             if (_form != null && !_form.IsDisposed) _form.CloseForExit();
             _dev.Dispose();
             _ui.Dispose();
@@ -336,6 +347,74 @@ namespace SM809
         {
             _menu.Show(Cursor.Position);
             Win32.SetForegroundWindow(_menu.Handle);
+        }
+
+        internal static void ShowLowBattery(NotifyIcon icon, int percent)
+        {
+            icon.ShowBalloonTip(10000, "Bateria do mouse em " + percent + "%",
+                "Conecte o cabo USB-C para não ficar sem mouse no meio do jogo.", ToolTipIcon.Warning);
+        }
+
+        private void OnStripAvailability(bool ok)
+        {
+            _stripShowing = ok;
+            Refresh();
+        }
+
+        private void ToggleAutoStart()
+        {
+            try
+            {
+                if (AutoStart.Default.IsEnabled) AutoStart.Default.Disable();
+                else AutoStart.Default.Enable(Application.ExecutablePath);
+            }
+            catch (Exception ex)
+            {
+                _tray.ShowBalloonTip(5000, "Não foi possível alterar a inicialização", ex.Message, ToolTipIcon.Error);
+            }
+            _autoStartItem.Checked = AutoStart.Default.IsEnabled;
+        }
+
+        // Plano B (barra vertical ou Explorer fora do ar): o número vai para o ícone da bandeja.
+        private void UpdateTrayIcon(BatteryView v)
+        {
+            string key = _stripShowing ? "app" : v.Text + "|" + v.Tone + "|" + v.Dim + "|" + v.Charging;
+            if (key == _iconKey) return;
+            _iconKey = key;
+            IntPtr old = _numberIcon;
+            if (_stripShowing)
+            {
+                _tray.Icon = _appIcon;
+                _numberIcon = IntPtr.Zero;
+            }
+            else
+            {
+                _numberIcon = NumberIcon(v);
+                _tray.Icon = Icon.FromHandle(_numberIcon);
+            }
+            if (old != IntPtr.Zero) Win32.DestroyIcon(old);
+        }
+
+        private static IntPtr NumberIcon(BatteryView v)
+        {
+            string text = v.Charging ? "⚡" : v.Text.Replace("%", "");
+            Color fg = v.Tone == BatteryTone.Critical ? Color.FromArgb(255, 92, 92)
+                     : v.Tone == BatteryTone.Warning ? Color.FromArgb(255, 164, 58)
+                     : v.Dim ? Theme.SubText : Color.White;
+            using (var bmp = new Bitmap(16, 16, PixelFormat.Format32bppArgb))
+            using (var g = Graphics.FromImage(bmp))
+            using (var bg = new SolidBrush(Theme.Back))
+            using (var brush = new SolidBrush(fg))
+            using (var font = new Font(v.Charging ? "Segoe UI Symbol" : "Segoe UI", text.Length >= 3 ? 7f : 9f, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var fmt = new StringFormat())
+            {
+                g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                g.FillRectangle(bg, 0, 0, 16, 16);
+                fmt.Alignment = StringAlignment.Center;
+                fmt.LineAlignment = StringAlignment.Center;
+                g.DrawString(text, font, brush, new RectangleF(0, 0, 16, 16), fmt);
+                return bmp.GetHicon();
+            }
         }
 
         private void OnUi(MethodInvoker action)
@@ -367,6 +446,10 @@ namespace SM809
             item.Charging = v.Charging;
             _strip.SetItems(new[] { item }, v.Tooltip);
             _tray.Text = v.Tooltip.Length > 63 ? v.Tooltip.Substring(0, 63) : v.Tooltip;
+            UpdateTrayIcon(v);
+            bool online = _dev.IsConnected && s.Valid && s.LinkStatus != 0 && since <= BatteryView.StaleAfter;
+            int percent = BatteryView.Clamp(s.BatteryLevel);
+            if (_alert.Update(online, s.BatteryStatus, percent)) ShowLowBattery(_tray, percent);
         }
 
         private string Detail(DeviceStatus s)

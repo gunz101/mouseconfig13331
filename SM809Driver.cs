@@ -18,6 +18,12 @@ using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using Microsoft.Win32.SafeHandles;
 
+// Nome exibido pelo Windows nas notificações e em Aplicativos de inicialização.
+[assembly: System.Reflection.AssemblyTitle("SM809 PRO")]
+[assembly: System.Reflection.AssemblyProduct("SM809 PRO — Driver Local")]
+[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.1.0.0")]
+
 namespace SM809
 {
     // ========================================================================
@@ -1470,6 +1476,8 @@ namespace SM809
 
         // Perfis
         private ComboBox _profileCombo;
+        private CheckBox _autoStartChk;
+        private bool _autoStartSync;
 
         // hotspots na imagem (coordenadas na imagem original 400×400)
         private static readonly Point[] Hotspots =
@@ -1522,6 +1530,7 @@ namespace SM809
             _uiTimer.Start();
 
             Shown += delegate { UpdateConnectionLabel(); UpdateNumLockIndicator(); };
+            VisibleChanged += delegate { if (Visible) SyncAutoStartCheck(); };
             FormClosing += delegate(object s, FormClosingEventArgs e)
             {
                 _cfg.WinMax = WindowState == FormWindowState.Maximized;
@@ -2684,6 +2693,12 @@ namespace SM809
             page.Controls.Add(expl);
             y += 56;
 
+            page.Controls.Add(SectionAt("Inicialização", 16, y)); y += 28;
+            _autoStartChk = MakeCheck("Iniciar com o Windows (só bandeja e bateria na barra)", 16, y, AutoStart.Default.IsEnabled);
+            _autoStartChk.CheckedChanged += delegate { ToggleAutoStartFromUi(); };
+            page.Controls.Add(_autoStartChk);
+            y += 44;
+
             page.Controls.Add(SectionAt("Restaurar", 16, y)); y += 28;
             var resetBtn = Theme.MakeChip("Reset de fábrica do mouse", 210, 34);
             resetBtn.ForeColor = Theme.Danger;
@@ -2710,7 +2725,7 @@ namespace SM809
 
             page.Controls.Add(SectionAt("Sobre", 16, y)); y += 28;
             var about = new Label();
-            about.Text = "SM809 PRO — Driver Local v1.0\n" +
+            about.Text = "SM809 PRO — Driver Local v1.1\n" +
                 "Reimplementação do driver web oficial (driver.yuandaxin-tech.com)\n" +
                 "para uso offline. Protocolo documentado em PROTOCOLO.md.\n\n" +
                 "As configurações são gravadas na memória interna do mouse\n" +
@@ -2896,6 +2911,29 @@ namespace SM809
             UpdateConnectionLabel();
             if (ok) Toast("✔ Mouse conectado no modo " + _dev.ConnectionMode + ".", true);
             else Toast("Mouse não encontrado. Conecte pelo cabo USB-C ou dongle 2.4G (Bluetooth não suporta configuração).", false);
+        }
+
+        private void ToggleAutoStartFromUi()
+        {
+            if (_autoStartSync) return;
+            try
+            {
+                if (_autoStartChk.Checked) AutoStart.Default.Enable(Application.ExecutablePath);
+                else AutoStart.Default.Disable();
+                Toast(_autoStartChk.Checked ? "✔ Vai iniciar com o Windows, só na bandeja." : "Não inicia mais com o Windows.", true);
+            }
+            catch (Exception ex)
+            {
+                Toast("Não foi possível alterar a inicialização: " + ex.Message, false);
+            }
+            SyncAutoStartCheck();
+        }
+
+        private void SyncAutoStartCheck()
+        {
+            _autoStartSync = true;
+            try { _autoStartChk.Checked = AutoStart.Default.IsEnabled; }
+            finally { _autoStartSync = false; }
         }
 
         private void UpdateConnectionLabel()
@@ -3647,8 +3685,23 @@ namespace SM809
             catch (WaitHandleCannotBeOpenedException) { }
         }
 
+        // Dois processos falando com o mouse misturam as confirmações (ACK) e corrompem gravações.
+        private static bool ResidentRunning()
+        {
+            Mutex m;
+            if (!Mutex.TryOpenExisting(MutexName, out m)) return false;
+            m.Dispose();
+            return true;
+        }
+
         private static void ReapplyHeadless()
         {
+            if (ResidentRunning())
+            {
+                Console.WriteLine("O SM809 Driver esta aberto na bandeja. Feche pelo menu da bandeja (Sair)");
+                Console.WriteLine("ou use 'Regravar tudo no mouse' na aba Sistema.");
+                return;
+            }
             var cfg = LocalConfig.Load();
             using (var dev = new Sm809Device())
             {
