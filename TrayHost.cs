@@ -182,4 +182,212 @@ namespace SM809
             }
         }
     }
+
+    internal sealed class DarkMenuRenderer : ToolStripProfessionalRenderer
+    {
+        public DarkMenuRenderer() : base(new DarkMenuColors())
+        {
+            RoundedEdges = false;
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = Theme.Text;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+        {
+            TextRenderer.DrawText(e.Graphics, "✓", e.Item.Font, e.ImageRectangle, Theme.Accent,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        }
+
+        private sealed class DarkMenuColors : ProfessionalColorTable
+        {
+            public override Color ToolStripDropDownBackground { get { return Theme.Panel; } }
+            public override Color ImageMarginGradientBegin { get { return Theme.Panel; } }
+            public override Color ImageMarginGradientMiddle { get { return Theme.Panel; } }
+            public override Color ImageMarginGradientEnd { get { return Theme.Panel; } }
+            public override Color MenuBorder { get { return Theme.Border; } }
+            public override Color MenuItemBorder { get { return Theme.ChipHover; } }
+            public override Color MenuItemSelected { get { return Theme.ChipHover; } }
+            public override Color SeparatorDark { get { return Theme.Border; } }
+            public override Color SeparatorLight { get { return Theme.Border; } }
+            public override Color CheckBackground { get { return Theme.Panel; } }
+            public override Color CheckSelectedBackground { get { return Theme.ChipHover; } }
+            public override Color CheckPressedBackground { get { return Theme.ChipHover; } }
+        }
+    }
+
+    // Processo residente: dono da conexão com o mouse, da bandeja e da tira. A janela
+    // de configuração é criada sob demanda e o X só a esconde.
+    internal sealed class TrayHost : ApplicationContext
+    {
+        private const int ForegroundPollMs = 1500;
+        private const int BackgroundPollMs = 15000;
+
+        private readonly Sm809Device _dev = new Sm809Device();
+        private readonly Control _ui = new Control();
+        private readonly NotifyIcon _tray = new NotifyIcon();
+        private readonly ContextMenuStrip _menu = new ContextMenuStrip();
+        private readonly System.Windows.Forms.Timer _poll = new System.Windows.Forms.Timer();
+        private readonly System.Windows.Forms.Timer _reconnect = new System.Windows.Forms.Timer();
+        private readonly TaskbarBattery _strip = new TaskbarBattery();
+        private readonly Icon _appIcon;
+        private MainForm _form;
+        private DateTime _lastReport = DateTime.MinValue;
+        private int _lastKnownPercent = -1;
+        private int[] _dpiLevels;
+        private int _dpiCount;
+        private DateTime _cfgStamp;
+
+        public TrayHost(bool showWindow)
+        {
+            GC.KeepAlive(_ui.Handle);
+            _appIcon = AppIcon.Load(SystemInformation.SmallIconSize) ?? SystemIcons.Application;
+
+            var open = new ToolStripMenuItem("Abrir configurações", null, delegate { ShowMainWindow(); });
+            open.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+            _menu.Renderer = new DarkMenuRenderer();
+            _menu.Font = new Font("Segoe UI", 9f);
+            _menu.Items.Add(open);
+            _menu.Items.Add(new ToolStripSeparator());
+            _menu.Items.Add(new ToolStripMenuItem("Sair", null, delegate { Exit(); }));
+
+            _tray.Icon = _appIcon;
+            _tray.Text = "SM809 PRO";
+            _tray.ContextMenuStrip = _menu;
+            _tray.MouseDoubleClick += delegate(object s, MouseEventArgs e)
+            {
+                if (e.Button == MouseButtons.Left) ShowMainWindow();
+            };
+            _tray.Visible = true;
+
+            _dev.StatusChanged += delegate { OnUi(OnStatus); };
+            _dev.ConnectionLost += delegate { OnUi(Refresh); };
+
+            _strip.Clicked += delegate { OnUi(ShowMainWindow); };
+            _strip.RightClicked += delegate { OnUi(ShowMenuAtCursor); };
+            _strip.Start();
+
+            _poll.Interval = BackgroundPollMs;
+            _poll.Tick += delegate
+            {
+                if (_dev.IsConnected) _dev.TriggerStatus();
+                Refresh();
+            };
+            _poll.Start();
+            _reconnect.Interval = 5000;
+            _reconnect.Tick += delegate
+            {
+                if (!_dev.IsConnected && _dev.Connect()) Refresh();
+            };
+            _reconnect.Start();
+
+            _dev.Connect();
+            Refresh();
+            if (showWindow) ShowMainWindow();
+        }
+
+        internal void ShowMainWindow()
+        {
+            if (_form == null || _form.IsDisposed)
+            {
+                _form = new MainForm(_dev);
+                _form.VisibleChanged += delegate
+                {
+                    _poll.Interval = _form.Visible ? ForegroundPollMs : BackgroundPollMs;
+                };
+            }
+            if (!_form.Visible) _form.Show();
+            if (_form.WindowState == FormWindowState.Minimized) Win32.ShowWindow(_form.Handle, Win32.SW_RESTORE);
+            _form.Activate();
+            if (_dev.IsConnected) _dev.TriggerStatus();
+        }
+
+        internal void Exit()
+        {
+            _poll.Stop();
+            _reconnect.Stop();
+            _strip.Dispose();
+            _tray.Visible = false;
+            _tray.Dispose();
+            if (_form != null && !_form.IsDisposed) _form.CloseForExit();
+            _dev.Dispose();
+            _ui.Dispose();
+            ExitThread();
+        }
+
+        internal void ListenForShowRequests(EventWaitHandle signal)
+        {
+            var t = new Thread(delegate()
+            {
+                try
+                {
+                    while (signal.WaitOne()) OnUi(ShowMainWindow);
+                }
+                catch (ObjectDisposedException) { }
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        private void ShowMenuAtCursor()
+        {
+            _menu.Show(Cursor.Position);
+            Win32.SetForegroundWindow(_menu.Handle);
+        }
+
+        private void OnUi(MethodInvoker action)
+        {
+            try
+            {
+                if (!_ui.IsDisposed) _ui.BeginInvoke(action);
+            }
+            catch (InvalidOperationException) { }
+        }
+
+        private void OnStatus()
+        {
+            _lastReport = DateTime.UtcNow;
+            _lastKnownPercent = BatteryView.NextKnownPercent(_lastKnownPercent, _dev.Status);
+            Refresh();
+        }
+
+        private void Refresh()
+        {
+            var s = _dev.Status;
+            TimeSpan since = _lastReport == DateTime.MinValue ? TimeSpan.Zero : DateTime.UtcNow - _lastReport;
+            var v = BatteryView.From(_dev.IsConnected, s, since, _lastKnownPercent, Detail(s));
+            var item = new StripItem();
+            item.Glyph = TaskbarBattery.MouseGlyph;
+            item.Text = v.Text;
+            item.Tone = v.Tone;
+            item.Dim = v.Dim;
+            item.Charging = v.Charging;
+            _strip.SetItems(new[] { item }, v.Tooltip);
+            _tray.Text = v.Tooltip.Length > 63 ? v.Tooltip.Substring(0, 63) : v.Tooltip;
+        }
+
+        private string Detail(DeviceStatus s)
+        {
+            LoadDpiLevels();
+            bool known = _dpiLevels != null && s.CurrentLevel >= 0 && s.CurrentLevel < _dpiCount && s.CurrentLevel < _dpiLevels.Length;
+            return _dev.ConnectionMode + " · " + (known ? "DPI " + _dpiLevels[s.CurrentLevel] : "DPI ?");
+        }
+
+        private void LoadDpiLevels()
+        {
+            try
+            {
+                DateTime stamp = File.Exists(LocalConfig.ConfigPath) ? File.GetLastWriteTimeUtc(LocalConfig.ConfigPath) : DateTime.MinValue;
+                if (_dpiLevels != null && stamp == _cfgStamp) return;
+                var cfg = LocalConfig.Load();
+                _dpiLevels = cfg.DpiLevels;
+                _dpiCount = cfg.DpiCount;
+                _cfgStamp = stamp;
+            }
+            catch (Exception) { }
+        }
+    }
 }

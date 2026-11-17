@@ -1432,7 +1432,8 @@ namespace SM809
     // ========================================================================
     internal class MainForm : Form
     {
-        private readonly Sm809Device _dev = new Sm809Device();
+        private readonly Sm809Device _dev;
+        private bool _exiting;
         private LocalConfig _cfg;
 
         private ListView _btnList;
@@ -1446,8 +1447,7 @@ namespace SM809
         private bool _syncing;
         private Button _reconnectBtn;
         private TabControl _tabs;
-        private System.Windows.Forms.Timer _statusTimer;
-        private System.Windows.Forms.Timer _reconnectTimer;
+        private System.Windows.Forms.Timer _uiTimer;
 
         // DPI tab
         private NumericUpDown _dpiCount;
@@ -1480,8 +1480,9 @@ namespace SM809
             new Point(255, 33), new Point(245, 75), new Point(258, 155), new Point(265, 202)
         };
 
-        public MainForm()
+        public MainForm(Sm809Device dev)
         {
+            _dev = dev;
             _cfg = LocalConfig.Load();
             Text = "SM809 PRO — Driver Local";
             ClientSize = new Size(1240, 760);
@@ -1510,22 +1511,18 @@ namespace SM809
             _dev.StatusChanged += OnDeviceStatus;
             _dev.ConnectionLost += OnConnectionLost;
 
-            _statusTimer = new System.Windows.Forms.Timer();
-            _statusTimer.Interval = 1500;   // espelhamento quase em tempo real
-            _statusTimer.Tick += delegate
+            _uiTimer = new System.Windows.Forms.Timer();
+            _uiTimer.Interval = 1500;
+            _uiTimer.Tick += delegate
             {
-                if (_dev.IsConnected) _dev.TriggerStatus();
+                if (!Visible) return;
+                UpdateConnectionLabel();
                 UpdateNumLockIndicator();
             };
-            _statusTimer.Start();
+            _uiTimer.Start();
 
-            _reconnectTimer = new System.Windows.Forms.Timer();
-            _reconnectTimer.Interval = 5000;
-            _reconnectTimer.Tick += delegate { if (!_dev.IsConnected) TryConnect(false); };
-            _reconnectTimer.Start();
-
-            Shown += delegate { TryConnect(true); UpdateNumLockIndicator(); };
-            FormClosing += delegate
+            Shown += delegate { UpdateConnectionLabel(); UpdateNumLockIndicator(); };
+            FormClosing += delegate(object s, FormClosingEventArgs e)
             {
                 _cfg.WinMax = WindowState == FormWindowState.Maximized;
                 if (WindowState == FormWindowState.Normal)
@@ -1534,8 +1531,25 @@ namespace SM809
                     _cfg.WinH = ClientSize.Height;
                 }
                 _cfg.Save();
+                // o X só esconde: o app continua na bandeja mostrando a bateria
+                if (e.CloseReason == CloseReason.UserClosing && !_exiting)
+                {
+                    e.Cancel = true;
+                    Hide();
+                }
             };
-            FormClosed += delegate { _dev.Dispose(); };
+            FormClosed += delegate
+            {
+                _uiTimer.Dispose();
+                _dev.StatusChanged -= OnDeviceStatus;
+                _dev.ConnectionLost -= OnConnectionLost;
+            };
+        }
+
+        public void CloseForExit()
+        {
+            _exiting = true;
+            Close();
         }
 
         private static string AppDir()
@@ -1598,7 +1612,7 @@ namespace SM809
             _header.Controls.Add(_connLabel);
 
             _reconnectBtn = Theme.MakePrimary("Reconectar", 110, 30);
-            _reconnectBtn.Click += delegate { TryConnect(true); };
+            _reconnectBtn.Click += delegate { Reconnect(); };
             _header.Controls.Add(_reconnectBtn);
 
             // realinha sempre que um texto muda de tamanho ou a janela redimensiona
@@ -2876,23 +2890,21 @@ namespace SM809
         }
 
         // ---------------------------------------------------------- conexão
-        private void TryConnect(bool verbose)
+        private void Reconnect()
         {
             bool ok = _dev.Connect();
-            if (ok)
-            {
-                _connLabel.Text = "● Conectado (" + _dev.ConnectionMode + ")";
-                _connLabel.ForeColor = Theme.Accent;
-                if (verbose) Toast("✔ Mouse conectado no modo " + _dev.ConnectionMode + ".", true);
-            }
-            else
-            {
-                _connLabel.Text = "● Desconectado";
-                _connLabel.ForeColor = Theme.Danger;
-                _batteryLabel.Text = "";
-                if (verbose)
-                    Toast("Mouse não encontrado. Conecte pelo cabo USB-C ou dongle 2.4G (Bluetooth não suporta configuração).", false);
-            }
+            UpdateConnectionLabel();
+            if (ok) Toast("✔ Mouse conectado no modo " + _dev.ConnectionMode + ".", true);
+            else Toast("Mouse não encontrado. Conecte pelo cabo USB-C ou dongle 2.4G (Bluetooth não suporta configuração).", false);
+        }
+
+        private void UpdateConnectionLabel()
+        {
+            string text = _dev.IsConnected ? "● Conectado (" + _dev.ConnectionMode + ")" : "● Desconectado";
+            if (_connLabel.Text == text) return;
+            _connLabel.Text = text;
+            _connLabel.ForeColor = _dev.IsConnected ? Theme.Accent : Theme.Danger;
+            if (!_dev.IsConnected) _batteryLabel.Text = "";
         }
 
         private void OnConnectionLost()
@@ -3589,32 +3601,50 @@ namespace SM809
     // ========================================================================
     internal static class Program
     {
+        private const string MutexName = "SM809LocalDriver";
+        private const string ShowEventName = "SM809LocalDriver.Show";
+
         [STAThread]
         private static void Main(string[] argv)
         {
-            // Modo utilitário: regrava a config salva no mouse e sai. Útil para
-            // restaurar o mouse sem abrir a janela (atalho, script, tarefa).
-            foreach (var a in argv)
+            if (Array.IndexOf(argv, "--reapply") >= 0 || Array.IndexOf(argv, "-r") >= 0)
             {
-                if (a == "--reapply" || a == "-r")
-                {
-                    ReapplyHeadless();
-                    return;
-                }
+                ReapplyHeadless();
+                return;
             }
+#if CLI
+            Console.WriteLine("Uso: SM809Restore.exe --reapply   (regrava no mouse a configuracao salva)");
+#else
+            bool tray = Array.IndexOf(argv, "--tray") >= 0;
             bool created;
-            using (var mutex = new Mutex(true, "SM809LocalDriver", out created))
+            using (var mutex = new Mutex(true, MutexName, out created))
             {
                 if (!created)
                 {
-                    MessageBox.Show("O SM809 Driver Local já está aberto.", "SM809",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    // --tray vem do boot: com o app já rodando, sai em silêncio
+                    if (!tray) SignalRunningInstance();
                     return;
                 }
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new MainForm());
+                using (var showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName))
+                {
+                    Application.EnableVisualStyles();
+                    Application.SetCompatibleTextRenderingDefault(false);
+                    var host = new TrayHost(!tray);
+                    host.ListenForShowRequests(showSignal);
+                    Application.Run(host);
+                }
             }
+#endif
+        }
+
+        private static void SignalRunningInstance()
+        {
+            try
+            {
+                Win32.AllowSetForegroundWindow(-1);
+                using (var signal = EventWaitHandle.OpenExisting(ShowEventName)) signal.Set();
+            }
+            catch (WaitHandleCannotBeOpenedException) { }
         }
 
         private static void ReapplyHeadless()
