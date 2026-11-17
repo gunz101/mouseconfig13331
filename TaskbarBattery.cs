@@ -604,5 +604,11 @@ namespace SM809
         public static extern bool ShowWindow(IntPtr hwnd, int cmd);
         [DllImport("user32.dll")]
         public static extern bool AllowSetForegroundWindow(int processId);
+
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        public static extern int SetWindowTheme(IntPtr hwnd, string subAppName, string subIdList);
+
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
     }
 }

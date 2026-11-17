@@ -1146,6 +1146,7 @@ namespace SM809
         public int WinW;          // tamanho preferido da janela (área útil)
         public int WinH;
         public bool WinMax;
+        public int NavIndex;
 
         public static string ConfigDir
         {
@@ -1284,6 +1285,7 @@ namespace SM809
             if (cfg.Lod != 1 && cfg.Lod != 2) cfg.Lod = defs.Lod;
             if (cfg.SleepTime < 1 || cfg.SleepTime > 20) cfg.SleepTime = defs.SleepTime;
             if (cfg.LightMode < 0 || cfg.LightMode > 10) cfg.LightMode = defs.LightMode;
+            if (cfg.NavIndex < 0 || cfg.NavIndex > 5) cfg.NavIndex = 0;
             return cfg;
         }
 
@@ -1392,16 +1394,38 @@ namespace SM809
             l.Margin = new Padding(4, 14, 4, 4);
             return l;
         }
+
+        public static void DarkScroll(Control c)
+        {
+            try { Win32.SetWindowTheme(c.Handle, "DarkMode_Explorer", null); }
+            catch (Exception) { }
+        }
     }
 
-    internal class MainForm : Form
+    // Barra de título escura (DWMWA_USE_IMMERSIVE_DARK_MODE: Windows 10 20H1+ e 11)
+    internal class DarkForm : Form
+    {
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            int on = 1;
+            try { Win32.DwmSetWindowAttribute(Handle, 20, ref on, 4); }
+            catch (Exception) { }
+        }
+    }
+
+    internal class MainForm : DarkForm
     {
         private readonly Sm809Device _dev;
         private bool _exiting;
         private LocalConfig _cfg;
 
-        private ListView _btnList;
-        private PictureBox _mousePic;
+        private ButtonMapView _map;
+        private NavBar _nav;
+        private Panel _body;
+        private Panel _pageHost;
+        private Label _assignTarget;
+        private readonly List<Panel> _pages = new List<Panel>();
         private Label _statusLabel;
         private Label _connLabel;
         private Label _batteryLabel;
@@ -1410,7 +1434,6 @@ namespace SM809
         // handlers de rádio/checkbox reenviem comandos de volta ao dispositivo.
         private bool _syncing;
         private Button _reconnectBtn;
-        private TabControl _tabs;
         private System.Windows.Forms.Timer _uiTimer;
 
         private NumericUpDown _dpiCount;
@@ -1432,15 +1455,6 @@ namespace SM809
         private CheckBox _autoStartChk;
         private bool _autoStartSync;
 
-        // hotspots na imagem (coordenadas na imagem original 400×400)
-        private static readonly Point[] Hotspots =
-        {
-            new Point(118, 152), new Point(88, 200), new Point(133, 185), new Point(152, 172),
-            new Point(128, 240), new Point(148, 225), new Point(140, 287), new Point(160, 267),
-            new Point(170, 238), new Point(160, 57), new Point(170, 92), new Point(195, 40),
-            new Point(255, 33), new Point(245, 75), new Point(258, 155), new Point(265, 202)
-        };
-
         public MainForm(Sm809Device dev)
         {
             _dev = dev;
@@ -1450,9 +1464,6 @@ namespace SM809
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = true;
             MinimumSize = Size;   // 1240×760 de área útil é o mínimo — nada quebra ao reduzir
-            if (_cfg.WinW >= 1240 && _cfg.WinH >= 760)
-                ClientSize = new Size(Math.Min(_cfg.WinW, 3840), Math.Min(_cfg.WinH, 2400));
-            if (_cfg.WinMax) WindowState = FormWindowState.Maximized;
             BackColor = Theme.Back;
             ForeColor = Theme.Text;
             Font = new Font("Segoe UI", 9f);
@@ -1462,12 +1473,16 @@ namespace SM809
             if (appIcon != null) Icon = appIcon;
 
             BuildHeader();
-            BuildLeftPanel();
-            BuildMousePanel();
-            BuildTabs();
+            BuildContent();
             BuildStatusBar();
+            _body.BringToFront();
 
             RefreshButtonList();
+
+            // tamanho salvo só depois de montar a janela
+            if (_cfg.WinW >= 1240 && _cfg.WinH >= 760)
+                ClientSize = new Size(Math.Min(_cfg.WinW, 3840), Math.Min(_cfg.WinH, 2400));
+            if (_cfg.WinMax) WindowState = FormWindowState.Maximized;
 
             _dev.StatusChanged += OnDeviceStatus;
             _dev.ConnectionLost += OnConnectionLost;
@@ -1596,259 +1611,146 @@ namespace SM809
             _numLockLabel.Location = new Point(_batteryLabel.Left - 28 - _numLockLabel.Width, 39);
         }
 
-        private void BuildLeftPanel()
+        private void BuildContent()
         {
-            var panel = new Panel();
-            panel.Bounds = new Rectangle(12, 74, 300, 636);
-            panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom;
-            panel.BackColor = Theme.Panel;
-            Controls.Add(panel);
+            _body = new Panel();
+            _body.Dock = DockStyle.Fill;
+            _body.BackColor = Theme.Back;
+            Controls.Add(_body);
 
-            var lbl = new Label();
-            lbl.Text = "Botões do mouse";
-            lbl.Font = new Font("Segoe UI Semibold", 10f);
-            lbl.ForeColor = Theme.Text;
-            lbl.AutoSize = true;
-            lbl.Location = new Point(12, 10);
-            panel.Controls.Add(lbl);
+            _nav = new NavBar(
+                new[] { "", "", "", "", "", "" },
+                new[] { "Atribuir", "DPI", "Desempenho", "LED", "Macros", "Sistema" });
+            _nav.Dock = DockStyle.Left;
+            _body.Controls.Add(_nav);
 
-            _btnList = new ListView();
-            _btnList.Bounds = new Rectangle(8, 38, 284, 590);
-            _btnList.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom;
-            _btnList.View = View.Details;
-            _btnList.FullRowSelect = true;
-            _btnList.HideSelection = false;
-            _btnList.MultiSelect = false;
-            _btnList.HeaderStyle = ColumnHeaderStyle.None;
-            _btnList.BackColor = Theme.Panel2;
-            _btnList.ForeColor = Theme.Text;
-            _btnList.BorderStyle = BorderStyle.None;
-            _btnList.Columns.Add("#", 28);
-            _btnList.Columns.Add("Botão", 108);
-            _btnList.Columns.Add("Função", 144);
-            _btnList.SelectedIndexChanged += delegate { _mousePic.Invalidate(); };
-            var rowHeight = new ImageList();
-            rowHeight.ImageSize = new Size(1, 22);
-            _btnList.SmallImageList = rowHeight;
-            _btnList.OwnerDraw = true;
-            _btnList.DrawColumnHeader += delegate(object s, DrawListViewColumnHeaderEventArgs e) { e.DrawDefault = true; };
-            _btnList.DrawSubItem += DrawButtonRow;
-            panel.Controls.Add(_btnList);
+            var table = new TableLayoutPanel();
+            table.Dock = DockStyle.Fill;
+            table.BackColor = Theme.Back;
+            table.Padding = new Padding(6);
+            table.ColumnCount = 2;
+            table.RowCount = 1;
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            _body.Controls.Add(table);
+            table.BringToFront();
+
+            Image photo = null;
+            string img = Path.Combine(AppDir(), "images", "mouse_nr.png");
+            if (File.Exists(img))
+            {
+                try { photo = Image.FromFile(img); }
+                catch (Exception) { }
+            }
+            _map = new ButtonMapView(photo);
+            _map.Dock = DockStyle.Fill;
+            _map.Margin = new Padding(6);
+            _map.SelectionChanged += delegate { UpdateAssignTarget(); };
+            table.Controls.Add(_map, 0, 0);
+
+            _pageHost = new Panel();
+            _pageHost.Dock = DockStyle.Fill;
+            _pageHost.Margin = new Padding(6);
+            _pageHost.BackColor = Theme.Panel2;
+            table.Controls.Add(_pageHost, 1, 0);
+
+            _pages.Add(BuildAssignTab());
+            _pages.Add(BuildDpiTab());
+            _pages.Add(BuildPerfTab());
+            _pages.Add(BuildLightTab());
+            _pages.Add(BuildMacroTab());
+            _pages.Add(BuildSystemTab());
+            foreach (var p in _pages)
+            {
+                p.Dock = DockStyle.Fill;
+                p.Visible = false;
+                _pageHost.Controls.Add(p);
+            }
+            _nav.SelectedChanged += ShowPage;
+            int start = _cfg.NavIndex >= 0 && _cfg.NavIndex < _pages.Count ? _cfg.NavIndex : 0;
+            _nav.SelectedIndex = start;
+            ShowPage(start);
         }
 
-        // Atualiza a lista SEM recriar itens (não pisca, não perde a seleção) e
-        // mostra a função REAL de cada botão agora: teclas do numpad viram
-        // seta/Home/End quando o NumLock está desligado.
+        private void ShowPage(int index)
+        {
+            for (int i = 0; i < _pages.Count; i++) _pages[i].Visible = i == index;
+            if (_cfg.NavIndex == index) return;
+            _cfg.NavIndex = index;
+            _cfg.Save();
+        }
+
+        // Função REAL de cada botão: teclas do numpad viram seta/Home/End com o NumLock desligado.
         private void RefreshButtonList()
         {
             var macros = ToMacroDefs(_cfg.Macros);
             bool numLockOn = NumLockHelper.IsOn;
-
-            if (_btnList.Items.Count != _cfg.Buttons.Count)
+            var tiles = new List<MapTile>();
+            foreach (var b in _cfg.Buttons)
             {
-                _btnList.BeginUpdate();
-                _btnList.Items.Clear();
-                foreach (var b in _cfg.Buttons)
+                var t = new MapTile();
+                t.Id = b.Id;
+                t.Label = b.Label;
+                t.Locked = b.Locked;
+                t.Function = KeyTables.CodeName(b.Code, macros, b.MacroId);
+                string alias = numLockOn ? null : KeyTables.NumLockOffAlias(b.Code);
+                if (alias != null)
                 {
-                    var it = new ListViewItem(b.Id.ToString());
-                    it.SubItems.Add(b.Label);
-                    it.SubItems.Add("");
-                    _btnList.Items.Add(it);
+                    t.Function += " → " + alias;
+                    t.Warning = true;
                 }
-                _btnList.EndUpdate();
+                tiles.Add(t);
             }
-
-            _btnList.BeginUpdate();
-            for (int i = 0; i < _cfg.Buttons.Count; i++)
-            {
-                var b = _cfg.Buttons[i];
-                string fn = KeyTables.CodeName(b.Code, macros, b.MacroId);
-                Color fg = b.Locked ? Theme.SubText : Theme.Text;
-                if (!numLockOn)
-                {
-                    string alias = KeyTables.NumLockOffAlias(b.Code);
-                    if (alias != null)
-                    {
-                        fn = fn + " → " + alias;
-                        fg = Color.FromArgb(240, 200, 90);   // aviso: não digita número
-                    }
-                }
-                if (b.Locked) fn += " 🔒";
-                var item = _btnList.Items[i];
-                if (item.SubItems[1].Text != b.Label) item.SubItems[1].Text = b.Label;
-                if (item.SubItems[2].Text != fn) item.SubItems[2].Text = fn;
-                if (item.ForeColor != fg) item.ForeColor = fg;
-            }
-            _btnList.EndUpdate();
+            _map.SetTiles(tiles);
+            UpdateAssignTarget();
         }
 
-        // Desenho estilo G HUB: linha selecionada com fundo azul + barra lateral.
-        private void DrawButtonRow(object sender, DrawListViewSubItemEventArgs e)
+        private void UpdateAssignTarget()
         {
-            bool selected = e.Item.Selected;
-            Color bg = selected ? Theme.AccentDark : Theme.Panel2;
-            using (var b = new SolidBrush(bg)) e.Graphics.FillRectangle(b, e.Bounds);
-            if (selected && e.ColumnIndex == 0)
-                using (var bar = new SolidBrush(Theme.Accent))
-                    e.Graphics.FillRectangle(bar, e.Bounds.X, e.Bounds.Y, 3, e.Bounds.Height);
-            Color fg = e.Item.ForeColor;
-            if (selected && fg == Theme.SubText) fg = Theme.Text;
-            var rect = new Rectangle(e.Bounds.X + (e.ColumnIndex == 0 ? 6 : 2), e.Bounds.Y,
-                e.Bounds.Width - 8, e.Bounds.Height);
-            TextRenderer.DrawText(e.Graphics, e.SubItem.Text, _btnList.Font, rect, fg,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            if (_assignTarget == null) return;
+            int i = SelectedButtonIndex();
+            _assignTarget.Text = i < 0
+                ? "Escolha um botão no mapa"
+                : "Atribuindo ao botão " + (i + 1) + " — " + _cfg.Buttons[i].Label;
         }
 
         private int SelectedButtonIndex()
         {
-            if (_btnList != null && _btnList.SelectedIndices.Count > 0) return _btnList.SelectedIndices[0];
-            return -1;
+            return _map != null ? _map.SelectedIndex : -1;
         }
 
-        private void BuildMousePanel()
+        private Panel MakePage(string title)
         {
-            var panel = new Panel();
-            panel.Bounds = new Rectangle(320, 74, 400, 636);
-            panel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom;
-            panel.BackColor = Theme.Panel;
-            Controls.Add(panel);
-
-            _mousePic = new PictureBox();
-            _mousePic.Bounds = new Rectangle(10, 40, 380, 420);
-            _mousePic.SizeMode = PictureBoxSizeMode.Zoom;
-            _mousePic.BackColor = Theme.Panel;
-            string img = Path.Combine(AppDir(), "images", "mouse_nr.png");
-            if (File.Exists(img))
-            {
-                try { _mousePic.Image = Image.FromFile(img); } catch { }
-            }
-            _mousePic.MouseClick += MousePicClick;
-            _mousePic.Paint += MousePicPaint;
-            panel.Controls.Add(_mousePic);
-
-            var lbl = new Label();
-            lbl.Text = "Clique em um número na imagem (ou na lista)\npara escolher o botão, depois selecione a\nfunção na aba \"Atribuir\".";
-            lbl.ForeColor = Theme.SubText;
-            lbl.AutoSize = true;
-            lbl.Location = new Point(14, 480);
-            panel.Controls.Add(lbl);
-
-            var hint = new Label();
-            hint.Text = "As configurações ficam gravadas no próprio mouse:\ndepois de aplicar, funcionam em qualquer computador\nsem precisar deste programa aberto.";
-            hint.ForeColor = Theme.Accent;
-            hint.AutoSize = true;
-            hint.Location = new Point(14, 550);
-            panel.Controls.Add(hint);
-
-            var mouseTitle = new Label();
-            mouseTitle.Text = "SOLAKAKA SM809 PRO";
-            mouseTitle.Font = new Font("Segoe UI Semibold", 10f);
-            mouseTitle.ForeColor = Theme.Text;
-            mouseTitle.AutoSize = true;
-            mouseTitle.Location = new Point(12, 10);
-            panel.Controls.Add(mouseTitle);
-        }
-
-        // Transforma coordenadas da imagem (400×400) para o PictureBox (Zoom)
-        private RectangleF ImageDrawRect()
-        {
-            if (_mousePic.Image == null) return RectangleF.Empty;
-            float iw = _mousePic.Image.Width, ih = _mousePic.Image.Height;
-            float cw = _mousePic.ClientSize.Width, ch = _mousePic.ClientSize.Height;
-            float scale = Math.Min(cw / iw, ch / ih);
-            float w = iw * scale, h = ih * scale;
-            return new RectangleF((cw - w) / 2f, (ch - h) / 2f, w, h);
-        }
-
-        private void MousePicClick(object sender, MouseEventArgs e)
-        {
-            if (_mousePic.Image == null) return;
-            var r = ImageDrawRect();
-            if (r.Width <= 0) return;
-            float sx = (e.X - r.X) / r.Width * _mousePic.Image.Width;
-            float sy = (e.Y - r.Y) / r.Height * _mousePic.Image.Height;
-            int best = -1;
-            double bestDist = 26 * 26;
-            for (int i = 0; i < Hotspots.Length; i++)
-            {
-                double dx = sx - Hotspots[i].X, dy = sy - Hotspots[i].Y;
-                double d = dx * dx + dy * dy;
-                if (d < bestDist) { bestDist = d; best = i; }
-            }
-            if (best >= 0 && best < _btnList.Items.Count)
-            {
-                _btnList.Items[best].Selected = true;
-                _btnList.EnsureVisible(best);
-                _btnList.Focus();
-            }
-        }
-
-        private void MousePicPaint(object sender, PaintEventArgs e)
-        {
-            int sel = SelectedButtonIndex();
-            if (sel < 0 || _mousePic.Image == null) return;
-            var r = ImageDrawRect();
-            if (r.Width <= 0) return;
-            float scale = r.Width / _mousePic.Image.Width;
-            float x = r.X + Hotspots[sel].X * scale;
-            float y = r.Y + Hotspots[sel].Y * scale;
-            using (var pen = new Pen(Theme.Accent, 2.5f))
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                e.Graphics.DrawEllipse(pen, x - 14, y - 14, 28, 28);
-            }
-        }
-
-        private void BuildTabs()
-        {
-            _tabs = new TabControl();
-            _tabs.Bounds = new Rectangle(728, 74, 500, 636);
-            _tabs.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom | AnchorStyles.Right;
-            _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
-            _tabs.SizeMode = TabSizeMode.Fixed;
-            _tabs.ItemSize = new Size(78, 26);
-            _tabs.DrawItem += TabsDrawItem;
-            Controls.Add(_tabs);
-
-            _tabs.TabPages.Add(BuildAssignTab());
-            _tabs.TabPages.Add(BuildDpiTab());
-            _tabs.TabPages.Add(BuildPerfTab());
-            _tabs.TabPages.Add(BuildLightTab());
-            _tabs.TabPages.Add(BuildMacroTab());
-            _tabs.TabPages.Add(BuildSystemTab());
-        }
-
-        private void TabsDrawItem(object sender, DrawItemEventArgs e)
-        {
-            var tab = _tabs.TabPages[e.Index];
-            bool selected = (e.State & DrawItemState.Selected) != 0;
-            using (var back = new SolidBrush(selected ? Theme.Panel2 : Theme.Panel))
-                e.Graphics.FillRectangle(back, e.Bounds);
-            TextRenderer.DrawText(e.Graphics, tab.Text, Font, e.Bounds,
-                selected ? Theme.Accent : Theme.SubText,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            if (selected)
-                using (var bar = new SolidBrush(Theme.Accent))
-                    e.Graphics.FillRectangle(bar, e.Bounds.X + 8, e.Bounds.Bottom - 3, e.Bounds.Width - 16, 3);
-        }
-
-        private TabPage MakePage(string title)
-        {
-            var page = new TabPage(title);
+            var page = new Panel();
+            page.Name = "page:" + title;
             page.BackColor = Theme.Panel2;
+            page.AutoScroll = true;
+            page.HandleCreated += delegate { Theme.DarkScroll(page); };
             return page;
         }
 
-        private TabPage BuildAssignTab()
+        private Panel BuildAssignTab()
         {
             var page = MakePage("Atribuir");
+            _assignTarget = new Label();
+            _assignTarget.Dock = DockStyle.Top;
+            _assignTarget.Height = 36;
+            _assignTarget.Padding = new Padding(12, 0, 0, 0);
+            _assignTarget.TextAlign = ContentAlignment.MiddleLeft;
+            _assignTarget.Font = new Font("Segoe UI Semibold", 10f);
+            _assignTarget.ForeColor = Theme.Accent;
+            page.Controls.Add(_assignTarget);
+
             var flow = new FlowLayoutPanel();
             flow.Dock = DockStyle.Fill;
             flow.AutoScroll = true;
             flow.FlowDirection = FlowDirection.LeftToRight;
             flow.WrapContents = true;
             flow.Padding = new Padding(8);
+            flow.HandleCreated += delegate { Theme.DarkScroll(flow); };
             page.Controls.Add(flow);
+            flow.BringToFront();
 
             AddCategory(flow, "Mouse", KeyTables.MouseActions(), 106);
             AddCategory(flow, "Números — digitam sempre (recomendado)", KeyTables.DigitActions(), 84);
@@ -1877,7 +1779,7 @@ namespace SM809
             flow.Controls.Add(fireBtn);
 
             var macroBtn = Theme.MakeChip("🎬  Macro…", 148, 30);
-            macroBtn.Click += delegate { _tabs.SelectedIndex = 4; };
+            macroBtn.Click += delegate { _nav.SelectedIndex = 4; };
             flow.Controls.Add(macroBtn);
 
             return page;
@@ -1907,7 +1809,7 @@ namespace SM809
             int idx = SelectedButtonIndex();
             if (idx < 0)
             {
-                if (warn) Toast("Selecione primeiro um botão na lista à esquerda.", false);
+                if (warn) Toast("Selecione primeiro um botão no mapa.", false);
                 return null;
             }
             var b = _cfg.Buttons[idx];
@@ -2031,7 +1933,7 @@ namespace SM809
             }
         }
 
-        private TabPage BuildDpiTab()
+        private Panel BuildDpiTab()
         {
             var page = MakePage("DPI");
             var y = 16;
@@ -2156,7 +2058,7 @@ namespace SM809
             finally { Cursor = Cursors.Default; }
         }
 
-        private TabPage BuildPerfTab()
+        private Panel BuildPerfTab()
         {
             var page = MakePage("Desemp.");
             int y = 14;
@@ -2314,7 +2216,7 @@ namespace SM809
             Toast(ok ? "✔ Sensor aplicado." : "Falha ao aplicar sensor.", ok);
         }
 
-        private TabPage BuildLightTab()
+        private Panel BuildLightTab()
         {
             var page = MakePage("LED");
             string[] modes =
@@ -2368,7 +2270,7 @@ namespace SM809
             Toast(ok ? "✔ Iluminação aplicada." : "Falha ao aplicar iluminação.", ok);
         }
 
-        private TabPage BuildMacroTab()
+        private Panel BuildMacroTab()
         {
             var page = MakePage("Macros");
             int y = 14;
@@ -2380,6 +2282,7 @@ namespace SM809
             _macroList.BackColor = Theme.Panel;
             _macroList.ForeColor = Theme.Text;
             _macroList.BorderStyle = BorderStyle.FixedSingle;
+            _macroList.HandleCreated += delegate { Theme.DarkScroll(_macroList); };
             _macroList.DrawMode = DrawMode.OwnerDrawFixed;
             _macroList.ItemHeight = 26;
             _macroList.DrawItem += delegate(object s, DrawItemEventArgs e)
@@ -2442,7 +2345,7 @@ namespace SM809
             page.Controls.Add(assignBtn);
 
             var note = new Label();
-            note.Text = "1. Crie/grave uma macro (teclas + tempos).\n2. Selecione um botão na lista à esquerda.\n3. Clique em \"Atribuir ao botão selecionado\".\nA macro é gravada na memória do mouse.";
+            note.Text = "1. Crie/grave uma macro (teclas + tempos).\n2. Selecione um botão no mapa.\n3. Clique em \"Atribuir ao botão selecionado\".\nA macro é gravada na memória do mouse.";
             note.ForeColor = Theme.SubText;
             note.AutoSize = true;
             note.Location = new Point(16, y + 316);
@@ -2582,7 +2485,7 @@ namespace SM809
             return r;
         }
 
-        private TabPage BuildSystemTab()
+        private Panel BuildSystemTab()
         {
             var page = MakePage("Sistema");
             int y = 16;
@@ -3031,7 +2934,7 @@ namespace SM809
         }
     }
 
-    internal class ComboKeyDialog : Form
+    internal class ComboKeyDialog : DarkForm
     {
         public int MainHid;
         public int Modifiers;
@@ -3154,7 +3057,7 @@ namespace SM809
         }
     }
 
-    internal class FireKeyDialog : Form
+    internal class FireKeyDialog : DarkForm
     {
         public int Interval = 50;
         public int Count;
@@ -3217,7 +3120,7 @@ namespace SM809
         }
     }
 
-    internal class MacroDialog : Form
+    internal class MacroDialog : DarkForm
     {
         public MacroDef Result;
         private readonly MacroDef _macro;
@@ -3510,7 +3413,7 @@ namespace SM809
         }
     }
 
-    internal class InputDialog : Form
+    internal class InputDialog : DarkForm
     {
         public string Value = "";
         private TextBox _box;
