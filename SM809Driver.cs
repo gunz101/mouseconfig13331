@@ -1496,16 +1496,8 @@ namespace SM809
             Font = new Font("Segoe UI", 9f);
             StartPosition = FormStartPosition.CenterScreen;
 
-            try
-            {
-                string logo = Path.Combine(AppDir(), "images", "logo.png");
-                if (File.Exists(logo))
-                {
-                    using (var bmp = new Bitmap(logo))
-                        Icon = Icon.FromHandle(bmp.GetHicon());
-                }
-            }
-            catch { }
+            var appIcon = AppIcon.Load(SystemInformation.IconSize);
+            if (appIcon != null) Icon = appIcon;
 
             BuildHeader();
             BuildLeftPanel();

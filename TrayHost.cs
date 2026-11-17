@@ -166,4 +166,20 @@ namespace SM809
             catch (Exception) { }
         }
     }
+
+    internal static class AppIcon
+    {
+        public static Icon Load(Size size)
+        {
+            try
+            {
+                using (var s = typeof(AppIcon).Assembly.GetManifestResourceStream("SM809.app.ico"))
+                    return s == null ? null : new Icon(s, size);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+    }
 }
