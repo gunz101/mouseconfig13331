@@ -61,9 +61,25 @@ namespace SM809
             }
             int p = Clamp(s.BatteryLevel);
             v.Text = p + "%";
-            v.Tone = p <= CriticalAt ? BatteryTone.Critical : p <= WarnAt ? BatteryTone.Warning : BatteryTone.Normal;
+            v.Tone = ToneFor(p);
             v.Tooltip = "SM809 PRO — " + p + "% · " + detail;
             return v;
+        }
+
+        // O HFP não informa carga: o fone mostra sempre o último valor recebido pelo Windows.
+        public static BatteryView ForHeadset(BtBattery h)
+        {
+            var v = new BatteryView();
+            int p = Clamp(h.Percent);
+            v.Text = p + "%";
+            v.Tone = ToneFor(p);
+            v.Tooltip = h.Name + " — " + p + "%";
+            return v;
+        }
+
+        private static BatteryTone ToneFor(int percent)
+        {
+            return percent <= CriticalAt ? BatteryTone.Critical : percent <= WarnAt ? BatteryTone.Warning : BatteryTone.Normal;
         }
 
         public static int NextKnownPercent(int previous, DeviceStatus s)
@@ -94,6 +110,36 @@ namespace SM809
             if (!_armed || percent > BatteryView.CriticalAt) return false;
             _armed = false;
             return true;
+        }
+    }
+
+    // Preferências da bandeja ficam no registro: o config.json é gravado pela janela a partir da
+    // cópia dela, e uma escrita feita pela bandeja seria sobrescrita.
+    internal sealed class TrayPrefs
+    {
+        public static readonly TrayPrefs Default = new TrayPrefs(@"Software\SM809Local");
+        private readonly string _key;
+
+        public TrayPrefs(string key)
+        {
+            _key = key;
+        }
+
+        public bool ShowHeadsets
+        {
+            get
+            {
+                using (var k = Registry.CurrentUser.OpenSubKey(_key))
+                {
+                    object v = k == null ? null : k.GetValue("ShowHeadsets");
+                    return !(v is int) || (int)v != 0;
+                }
+            }
+            set
+            {
+                using (var k = Registry.CurrentUser.CreateSubKey(_key))
+                    k.SetValue("ShowHeadsets", value ? 1 : 0, RegistryValueKind.DWord);
+            }
         }
     }
 
