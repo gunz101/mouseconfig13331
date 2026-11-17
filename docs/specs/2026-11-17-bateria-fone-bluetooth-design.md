@@ -86,10 +86,11 @@ Propriedades lidas, todas pela SetupAPI (`SetupDiGetDevicePropertyW`):
    - texto e tons do fone;
    - preferência no registro, numa chave de teste;
    - a tira com dois itens é mais larga que com um.
-2. **`--btcheck`:** leitura real do que o Windows informa agora e o tempo dela (abaixo de 100 ms).
-3. **`--hostcheck` ampliado:** com um fone conectado, a tira tem o item dele. Desligar a preferência
-   tira o item, e religar o devolve.
-4. **`--stripshots`:** captura da tira com mouse e fone.
+2. **Leitura real:** o que o Windows informa agora, conferido com as Configurações, e o tempo da
+   leitura (abaixo de 100 ms).
+3. **App residente de verdade:** com um fone conectado, a tira tem o item dele, com cor, tooltip,
+   texto da bandeja e alerta. Desligar a preferência tira o item, e religar o devolve.
+4. **Captura da tira** com mouse e fone, e do tooltip de duas linhas.
 5. **Produção:** depois de publicar, o app residente v1.3 mostra mouse e fone na barra real.
 
 ## 7. Fora do escopo
