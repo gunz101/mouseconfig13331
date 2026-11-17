@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
@@ -288,6 +289,12 @@ namespace SM809
         private DateTime _cfgStamp;
         private readonly AlertLatch _alert = new AlertLatch();
         private readonly ToolStripMenuItem _autoStartItem;
+        private static readonly TimeSpan HeadsetEvery = TimeSpan.FromSeconds(10);
+        private readonly ToolStripMenuItem _headsetsItem;
+        private readonly Dictionary<string, AlertLatch> _headsetAlerts = new Dictionary<string, AlertLatch>();
+        private List<BtBattery> _headsets = new List<BtBattery>();
+        private DateTime _headsetsRead = DateTime.MinValue;
+        private bool _showHeadsets = TrayPrefs.Default.ShowHeadsets;
         private bool _stripShowing = true;
         private string _iconKey = "app";
         private IntPtr _numberIcon;
@@ -302,10 +309,16 @@ namespace SM809
             _menu.Renderer = new DarkMenuRenderer();
             _menu.Font = new Font("Segoe UI", 9f);
             _autoStartItem = new ToolStripMenuItem("Iniciar com o Windows", null, delegate { ToggleAutoStart(); });
+            _headsetsItem = new ToolStripMenuItem("Mostrar fones Bluetooth", null, delegate { ToggleHeadsets(); });
             _menu.Items.Add(open);
             _menu.Items.Add(_autoStartItem);
+            _menu.Items.Add(_headsetsItem);
             _menu.Items.Add(new ToolStripSeparator());
-            _menu.Opening += delegate { _autoStartItem.Checked = AutoStart.Default.IsEnabled; };
+            _menu.Opening += delegate
+            {
+                _autoStartItem.Checked = AutoStart.Default.IsEnabled;
+                _headsetsItem.Checked = _showHeadsets;
+            };
             _menu.Items.Add(new ToolStripMenuItem("Sair", null, delegate { Exit(); }));
 
             _tray.Icon = _appIcon;
@@ -401,6 +414,49 @@ namespace SM809
                 "Conecte o cabo USB-C para não ficar sem mouse no meio do jogo.", ToolTipIcon.Warning);
         }
 
+        internal static void ShowLowHeadset(NotifyIcon icon, string name, int percent)
+        {
+            icon.ShowBalloonTip(10000, "Bateria do fone " + name + " em " + percent + "%",
+                "Carregue o fone para não ficar sem som no meio do jogo.", ToolTipIcon.Warning);
+        }
+
+        private void ToggleHeadsets()
+        {
+            try
+            {
+                TrayPrefs.Default.ShowHeadsets = !_showHeadsets;
+                _showHeadsets = !_showHeadsets;
+            }
+            catch (Exception ex)
+            {
+                _tray.ShowBalloonTip(5000, "Não foi possível salvar a preferência", ex.Message, ToolTipIcon.Error);
+            }
+            _headsetsItem.Checked = _showHeadsets;
+            _headsetsRead = DateTime.MinValue;
+            Refresh();
+        }
+
+        // Leitura barata (propriedades do Windows), mas não precisa acompanhar o ritmo do mouse.
+        private List<BtBattery> Headsets()
+        {
+            if (!_showHeadsets) return new List<BtBattery>();
+            if (DateTime.UtcNow - _headsetsRead >= HeadsetEvery)
+            {
+                _headsets = BluetoothBattery.ReadConnected();
+                _headsetsRead = DateTime.UtcNow;
+            }
+            return _headsets;
+        }
+
+        // NotifyIcon.Text aceita no máximo 63 caracteres: a linha do fone só entra se couber inteira.
+        internal static string TrayText(IList<string> lines)
+        {
+            string text = lines[0].Length > 63 ? lines[0].Substring(0, 63) : lines[0];
+            for (int i = 1; i < lines.Count; i++)
+                if (text.Length + 1 + lines[i].Length <= 63) text += "\n" + lines[i];
+            return text;
+        }
+
         private void OnStripAvailability(bool ok)
         {
             _stripShowing = ok;
@@ -484,18 +540,34 @@ namespace SM809
             var s = _dev.Status;
             TimeSpan since = _lastReport == DateTime.MinValue ? TimeSpan.Zero : DateTime.UtcNow - _lastReport;
             var v = BatteryView.From(_dev.IsConnected, s, since, _lastKnownPercent, Detail(s));
-            var item = new StripItem();
-            item.Glyph = TaskbarBattery.MouseGlyph;
-            item.Text = v.Text;
-            item.Tone = v.Tone;
-            item.Dim = v.Dim;
-            item.Charging = v.Charging;
-            _strip.SetItems(new[] { item }, v.Tooltip);
-            _tray.Text = v.Tooltip.Length > 63 ? v.Tooltip.Substring(0, 63) : v.Tooltip;
+            var items = new List<StripItem> { Item(TaskbarBattery.MouseGlyph, v) };
+            var lines = new List<string> { v.Tooltip };
+            foreach (var h in Headsets())
+            {
+                var hv = BatteryView.ForHeadset(h);
+                items.Add(Item(TaskbarBattery.HeadsetGlyph, hv));
+                lines.Add(hv.Tooltip);
+                AlertLatch latch;
+                if (!_headsetAlerts.TryGetValue(h.Address, out latch)) _headsetAlerts[h.Address] = latch = new AlertLatch();
+                if (latch.Update(true, 0, h.Percent)) ShowLowHeadset(_tray, h.Name, h.Percent);
+            }
+            _strip.SetItems(items, string.Join("\r\n", lines));
+            _tray.Text = TrayText(lines);
             UpdateTrayIcon(v);
             bool online = _dev.IsConnected && s.Valid && s.LinkStatus != 0 && since <= BatteryView.StaleAfter;
             int percent = BatteryView.Clamp(s.BatteryLevel);
             if (_alert.Update(online, s.BatteryStatus, percent)) ShowLowBattery(_tray, percent);
+        }
+
+        private static StripItem Item(string glyph, BatteryView v)
+        {
+            var item = new StripItem();
+            item.Glyph = glyph;
+            item.Text = v.Text;
+            item.Tone = v.Tone;
+            item.Dim = v.Dim;
+            item.Charging = v.Charging;
+            return item;
         }
 
         private string Detail(DeviceStatus s)
