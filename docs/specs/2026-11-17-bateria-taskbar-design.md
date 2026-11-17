@@ -126,8 +126,9 @@ central. A cor vermelha na tira continua sendo o sinal principal.
   ARGB 32 bits premultiplicado (GDI+, antialias em escala de cinza, porque ClearType não funciona
   sobre transparência).
 - **Conteúdo:** glifo `U+E962` (mouse) e `U+E945` (raio) da fonte **Segoe Fluent Icons**
-  (`SegoeIcons.ttf`), com fallback **Segoe MDL2 Assets**; texto em **Segoe UI Variable Text**
-  (fallback Segoe UI), 13 px a 96 DPI, escalado pelo DPI da taskbar.
+  (`SegoeIcons.ttf`), com fallback **Segoe MDL2 Assets**; texto em **Segoe UI**, 13 px a 96 DPI,
+  escalado pelo DPI da taskbar. (Segoe UI: a Segoe UI Variable é fonte variável e o GDI+ não a
+  renderiza bem.)
 - **Posição:** encostada à esquerda da `TrayNotifyWnd`, centralizada na altura da barra. Conferida
   a cada 1 s (largura da área de notificação, DPI, tema claro/escuro em
   `HKCU\…\Themes\Personalize\SystemUsesLightTheme`); só redesenha quando algo muda.
@@ -142,7 +143,8 @@ central. A cor vermelha na tira continua sendo o sinal principal.
   recria a tira. Se não for possível criá-la (barra vertical, classes ausentes), o `TrayHost`
   passa ao **plano B**: o número aparece desenhado dentro do ícone da bandeja.
 - **Manifest:** `app.manifest` declara compatibilidade com Windows 8/8.1/10/11 (exigido para janela
-  filha *layered*) e `asInvoker`. Não declara DPI, para manter o processo *unaware*.
+  filha *layered*), Common Controls v6 (dica com visual atual) e `asInvoker`. Não declara DPI,
+  para manter o processo *unaware*.
 
 ## 10. Bandeja e menu
 
