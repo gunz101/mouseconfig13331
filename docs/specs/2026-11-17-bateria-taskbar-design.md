@@ -1,6 +1,6 @@
 # Bateria na barra de tarefas + app residente — desenho
 
-**Data:** 2026-11-17 · **Status:** aprovado em conversa, aguardando revisão do documento
+**Data:** 2026-11-17 · **Status:** implementado (v1.1)
 **Inspiração:** [krisgfx9/Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor)
 (GPL-3.0 — só a *técnica* é reaproveitada; nenhum código é copiado, o projeto continua MIT).
 
@@ -74,8 +74,7 @@ então não disputam a conexão.
 | Bandeja → **Sair** | Fecha janela, tira e ícone; libera o mouse; encerra o processo |
 | Abrir o `.exe` com o app já rodando | A nova instância sinaliza a existente (evento nomeado `SM809LocalDriver.Show`), que traz a janela para a frente; a nova encerra |
 | Abrir com `--tray` com o app já rodando | A nova instância encerra em silêncio (não abre a janela) |
-| `--uicheck`, `--selftest` | Modos utilitários de console sem acesso ao mouse: executam e saem |
-| `--reapply`, `--battcheck` | Modos de console **com** acesso ao mouse: se o app residente estiver rodando (mutex `SM809LocalDriver`), recusam com a mensagem "feche pelo menu da bandeja → Sair, ou use Regravar tudo na aba Sistema". Dois processos falando com o mouse misturariam as confirmações (ACK) e corromperiam gravações |
+| `SM809Restore.exe --reapply` | Regrava a configuração salva e sai. Se o app residente estiver rodando (mutex `SM809LocalDriver`), recusa com "feche pelo menu da bandeja → Sair, ou use Regravar tudo na aba Sistema" — dois processos falando com o mouse misturariam as confirmações (ACK) e corromperiam gravações |
 
 A `MainForm` é criada na primeira vez que for aberta e depois só escondida/mostrada.
 
@@ -159,15 +158,16 @@ mesma dica da tira.
   Gerenciador de Tarefas → Aplicativos de inicialização.
 - **Desligado por padrão.** Só é gravado quando o usuário marca a opção (menu da bandeja ou
   checkbox na aba Sistema); desmarcar remove o valor.
-- Ao iniciar, se a opção estiver ligada e o caminho gravado for diferente do `.exe` atual (o
-  arquivo mudou de pasta), o valor é atualizado.
+- Ao iniciar, se a opção estiver ligada e o `.exe` gravado não existir mais (o app mudou de
+  pasta), o valor passa a apontar para o `.exe` atual. Outra cópia do app nunca sequestra a opção.
 
 ## 12. Ícone do app
 
 O glifo de mouse (`U+E962`) em azul `#00B8FC` sobre fundo transparente. Arquivo `images/app.ico`
 multi-tamanho (16, 20, 24, 32, 48, 256), gerado por `tools/make-icon.ps1` e versionado. É usado
 no `.exe` (`-win32icon`), embutido como recurso para a bandeja e para a janela (substitui o uso do
-`logo.png` como ícone da janela).
+`logo.png` como ícone da janela). O `.exe` se identifica como **SM809 PRO** (v1.1) nas notificações
+e em Aplicativos de inicialização, via `AssemblyTitle`/`AssemblyVersion`.
 
 ## 13. Build
 
@@ -178,7 +178,7 @@ csc -nologo -codepage:65001 -platform:anycpu -r:System.Web.Extensions.dll
     -win32manifest:app.manifest -win32icon:images\app.ico -resource:images\app.ico,SM809.app.ico
     SM809Driver.cs TrayHost.cs TaskbarBattery.cs
     → -target:winexe -out:SM809Driver.exe   (app)
-    → -target:exe    -out:SM809Restore.exe  (console: --reapply/--uicheck/--battcheck/--selftest)
+    → -target:exe -define:CLI -out:SM809Restore.exe  (console: --reapply)
 ```
 
 ## 14. Erros e recuperação
@@ -194,20 +194,20 @@ csc -nologo -codepage:65001 -platform:anycpu -r:System.Web.Extensions.dll
 
 ## 15. Validação
 
-1. `--selftest` (console, sem hardware): `BatteryView` cobrindo todos os estados da tabela §7;
-   transições do `AlertLatch` (dispara uma vez, não repete, rearma); formatação e correção de
-   caminho do `AutoStart` (sem gravar no registro); cálculo de posição da tira dado o retângulo da
-   área de notificação e o DPI.
-2. `--uicheck` continua passando (layout da configuração intacto).
-3. `--battcheck` (console, só leitura, com o app residente fechado): imprime `linkStatus`,
-   `batteryStatus` e nível lidos do mouse real. Também confirmo que ele **recusa** rodar com o
-   app residente aberto.
-4. App com `--tray`: o processo fica vivo; a janela filha da tira existe dentro da `Shell_TrayWnd`
-   com posição e tamanho coerentes (inspecionado por enumeração de janelas); captura de tela da
-   barra para o usuário conferir.
-5. X esconde, segunda abertura traz a janela, Sair encerra e libera o mouse.
-6. **Pelo usuário:** ligar "Iniciar com o Windows" (depois confirmo só *lendo* o registro) e
-   reiniciar o Explorer para ver a tira voltar.
+Feita com testes automatizados locais, fora do repositório, e capturas de tela:
+
+1. Lógica pura: `BatteryView` em todos os estados da §7; `AlertLatch` (dispara uma vez, não
+   repete, rearma); `AutoStart` (comando, correção de caminho, gravação numa chave de teste,
+   nunca na `Run` real); cálculo de posição da tira.
+2. Layout da configuração sem sobreposições no tamanho mínimo e ampliado, e a aba Sistema
+   cabendo na altura.
+3. Leitura real da bateria do mouse.
+4. Tira dentro da `Shell_TrayWnd`, à esquerda da área de notificação, visível, em cada estado
+   visual (capturas).
+5. Ciclo de vida: `--tray` sem janela; segunda abertura traz a janela; X esconde; `--tray`
+   repetido sai em silêncio; Sair remove a tira e libera o mouse; plano B no ícone da bandeja.
+6. Pelo usuário: ligar "Iniciar com o Windows" (o registro só é conferido, nunca alterado
+   pelos testes) e reiniciar o Explorer para ver a tira voltar.
 
 ## 16. Riscos e limitações
 

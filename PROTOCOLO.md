@@ -27,6 +27,10 @@ Todos os comandos são enviados via **feature report ID 6**:
   O oficial espera ~60 ms antes de ler o ACK e tenta 3x (pausa 100+50·tentativa ms antes de enviar).
 - **Status**: ler feature report ID 5 faz o mouse emitir um **input report ID 4**:
   `[linkStatus, nívelDPIAtual, taxaAtual, bateria(0-100), statusBateria, modoLED, ?, taxaMáx, tipoSensor]`
+  Semântica (confirmada no driver oficial): `linkStatus == 0` → mouse offline (dormindo
+  ou desligado); `statusBateria == 1` → carregando (o oficial **não** mostra a
+  porcentagem, porque o valor não é confiável na carga); `statusBateria == 2` → carga
+  completa (100%); outro valor → vale `bateria`. As leituras observadas vêm em passos de 10%.
 
 ## Comandos (cmd / subcmd / dados / padding)
 
