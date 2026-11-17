@@ -96,4 +96,74 @@ namespace SM809
             return true;
         }
     }
+
+    internal sealed class AutoStart
+    {
+        public const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        public const string ValueName = "SM809Driver";
+        public static readonly AutoStart Default = new AutoStart(RunKey, ValueName);
+
+        private readonly string _key;
+        private readonly string _name;
+
+        public AutoStart(string key, string name)
+        {
+            _key = key;
+            _name = name;
+        }
+
+        public static string CommandFor(string exePath)
+        {
+            return "\"" + exePath + "\" --tray";
+        }
+
+        public static string ExeOf(string command)
+        {
+            if (command == null) return null;
+            int a = command.IndexOf('"');
+            int b = a < 0 ? -1 : command.IndexOf('"', a + 1);
+            return b > a ? command.Substring(a + 1, b - a - 1) : command.Trim();
+        }
+
+        // Só corrige quando o exe gravado não existe mais: outro executável (ex.: uma
+        // cópia em outra pasta) nunca sequestra a inicialização.
+        public static bool NeedsFix(string stored, string exePath, Predicate<string> fileExists)
+        {
+            if (stored == null || string.Equals(stored, CommandFor(exePath), StringComparison.OrdinalIgnoreCase))
+                return false;
+            return !fileExists(ExeOf(stored));
+        }
+
+        public string Read()
+        {
+            using (var k = Registry.CurrentUser.OpenSubKey(_key))
+                return k == null ? null : k.GetValue(_name) as string;
+        }
+
+        public bool IsEnabled
+        {
+            get { return Read() != null; }
+        }
+
+        public void Enable(string exePath)
+        {
+            using (var k = Registry.CurrentUser.CreateSubKey(_key))
+                k.SetValue(_name, CommandFor(exePath), RegistryValueKind.String);
+        }
+
+        public void Disable()
+        {
+            using (var k = Registry.CurrentUser.OpenSubKey(_key, true))
+                if (k != null) k.DeleteValue(_name, false);
+        }
+
+        public void FixPathIfMoved(string exePath)
+        {
+            try
+            {
+                if (NeedsFix(Read(), exePath, File.Exists)) Enable(exePath);
+            }
+            catch (Exception) { }
+        }
+    }
 }
