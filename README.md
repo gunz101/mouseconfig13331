@@ -9,16 +9,18 @@ não carrega de forma confiável fora da China (servidor Alibaba Cloud com TLS i
 interna do mouse**, exatamente como o driver oficial faz. Depois de aplicar, as
 configurações funcionam em qualquer computador, sem precisar deste programa aberto.
 
-Visual: tema escuro estilo Logitech G HUB (grafite + azul elétrico, cards
-arredondados, seleção azul, aba ativa com barra azul).
+Visual: tema escuro estilo Logitech G HUB (grafite + azul elétrico, barra lateral de
+seções, mapa dos botões na disposição física do mouse, janela que acompanha o tamanho
+da tela, inclusive maximizada).
 
 ## Como usar
 
 1. Conecte o mouse pelo **cabo USB-C** ou pelo **dongle 2.4G**
    (por Bluetooth a configuração não é possível — limitação do próprio mouse).
 2. Abra `SM809Driver.exe`.
-3. Selecione um botão na lista à esquerda (ou clique no número na imagem).
-4. Escolha a função na aba **Atribuir** — é gravada no mouse na hora.
+3. Escolha o botão no **mapa** (grade do polegar, topo e outros) ou clique no número da foto.
+   As setas do teclado também andam pelos botões.
+4. Escolha a função na seção **Atribuir** da barra lateral — é gravada no mouse na hora.
 
 ### Bateria na barra de tarefas
 
@@ -48,9 +50,9 @@ aparece no ícone da bandeja.
   (que também aparece em Gerenciador de Tarefas → Aplicativos de inicialização).
 - Abrir o `SM809Driver.exe` de novo com o app rodando só traz a janela para a frente.
 
-### Abas
+### Seções (barra lateral)
 
-| Aba | O que faz |
+| Seção | O que faz |
 |-----|-----------|
 | **Atribuir** | Funções de mouse, **teclado numérico completo**, Janelas/Sistema (Alt+Tab, Win+Tab, Alt+F4, captura…), Navegador (abas, F5…), Discord (mudo/deafen), Planilhas/Excel, Texto/Office, multimídia, **F13–F24**, DPI, trava de DPI, atalho personalizado, tecla de fogo, desativar |
 | **DPI** | Até 6 níveis (100–26000), cor do LED por nível, nível ativo |
@@ -68,7 +70,7 @@ aparece no ícone da bandeja.
 
 Sugestão de layout nos 9 botões laterais: dígitos 1–9 na disposição do numpad físico
 (7-8-9 em cima), e `0`, vírgula e Enter nos botões da borda esquerda (10 e 11).
-Salve como perfil "Numpad" na aba Sistema.
+Salve como perfil "Numpad" na seção Sistema.
 
 ### Dica: F13–F24 (Discord push-to-talk, OBS)
 
@@ -104,6 +106,8 @@ gerado por `tools/make-icon.ps1`.
 - `SM809Driver.cs` — configuração, protocolo HID e janela (C# / WinForms)
 - `TrayHost.cs` — app residente: bandeja, bateria, alertas, iniciar com o Windows
 - `TaskbarBattery.cs` — a tira de bateria desenhada na barra de tarefas
+- `MapView.cs` — mapa dos botões (grade na disposição física do mouse)
+- `NavBar.cs` — barra lateral de seções
 - `app.manifest`, `build.cmd`, `tools/make-icon.ps1`, `images/app.ico` — build e ícone
 - `PROTOCOLO.md` — protocolo HID completo do mouse (engenharia reversa do driver oficial)
 - `images/` — imagens do driver oficial (numeração dos botões)
@@ -124,7 +128,7 @@ gerado por `tools/make-icon.ps1`.
 
 - **Indicador NumLock no topo da janela**: mostra o estado atual e **alterna com um
   clique** (liga ⇄ desliga). Necessário porque teclado sem numpad não tem a tecla.
-- **Função real de cada botão**: a lista à esquerda mostra o que o botão faz AGORA.
+- **Função real de cada botão**: o mapa mostra o que o botão faz AGORA.
   Com NumLock desligado, botões com tecla de numpad aparecem em amarelo com a função
   efetiva (ex.: "Num 2 → seta ↓").
 - **Espelhamento do mouse** (a cada 1,5 s com a janela aberta; 15 s em segundo plano): nível de DPI, taxa de retorno, modo de LED

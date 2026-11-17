@@ -1,6 +1,6 @@
 # Interface: mapa dos botões, layout fluido e barra lateral — desenho
 
-**Data:** 2026-11-17 · **Status:** aprovado
+**Data:** 2026-11-17 · **Status:** implementado (v1.2)
 
 ## 1. Objetivo
 
@@ -100,12 +100,13 @@ centro real (y de 152 a 292), com escala escolhida para que a menor distância d
 número esteja a até 14 px (coordenadas da imagem) e desenha um anel `Accent` no botão selecionado.
 
 **Tamanhos:** a grade ocupa 58% da largura interna e a foto o restante. A largura do bloco é
-derivada da coluna. A altura vem do que couber na vertical, limitada entre 40 e 96 px e a no
-máximo 0,7× a largura. O conjunto é centralizado na vertical. A fonte da função escala com a
-altura do bloco (12 a 18 px).
+derivada da coluna. A altura vem do que couber na vertical, limitada entre 40 e 120 px e a no
+máximo 0,8× a largura. O conjunto é centralizado na vertical. A fonte da função escala com a
+altura do bloco (0,22× a altura, de 12 a 18 px), o que garante duas linhas inteiras no tamanho
+mínimo da janela.
 
 **Bloco:** número pequeno no canto (`SubText`; `Accent` quando selecionado) e a função centralizada,
-em até duas linhas com reticências.
+quebrada em linhas, com reticências na última linha visível quando o texto não cabe.
 
 | Estado | Aparência |
 |---|---|
@@ -128,6 +129,7 @@ na foto é `MapLayout.PhotoHit(PointF imagem)`; os dois são testáveis sem jane
 
 - **Barras de rolagem escuras:** `SetWindowTheme(handle, "DarkMode_Explorer")` nos controles com
   rolagem (seções, lista de macros).
+- **Barra de título escura:** `DWMWA_USE_IMMERSIVE_DARK_MODE` em todas as janelas (base `DarkForm`).
 - **Atribuir:** uma linha no topo da seção diz "Atribuindo ao botão 5 — Lateral 5", ou "Escolha um
   botão no mapa" sem seleção.
 - **Textos:** "lista à esquerda" vira "mapa". As dicas fixas sob a foto antiga saem; a informação de
@@ -139,8 +141,8 @@ na foto é `MapLayout.PhotoHit(PointF imagem)`; os dois são testáveis sem jane
 |---|---|
 | `MapView.cs` (novo) | `MapTile`, `MapLayout` (puro), `ButtonMapView` |
 | `NavBar.cs` (novo) | `NavBar` |
-| `SM809Driver.cs` | `MainForm` monta o layout novo; saem lista, foto e abas antigas; `NavIndex` na configuração; `Theme.DarkScroll` |
-| `TaskbarBattery.cs` | `Win32.SetWindowTheme` |
+| `SM809Driver.cs` | `MainForm` monta o layout novo; saem lista, foto e abas antigas; `NavIndex` na configuração; `Theme.DarkScroll`; `DarkForm` |
+| `TaskbarBattery.cs` | `Win32.SetWindowTheme`, `Win32.DwmSetWindowAttribute`; `IconFont` reaproveitado pela `NavBar` |
 | `build.cmd`, `README.md` | novos arquivos; uso da grade e da barra lateral |
 
 ## 9. Validação
