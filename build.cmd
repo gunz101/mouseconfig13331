@@ -1,0 +1,9 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
+set SRC=SM809Driver.cs TrayHost.cs
+set OPT=-nologo -codepage:65001 -platform:anycpu -r:System.Web.Extensions.dll
+"%CSC%" %OPT% -target:winexe -out:SM809Driver.exe %SRC% || exit /b 1
+"%CSC%" %OPT% -target:exe -out:SM809Restore.exe %SRC% || exit /b 1
+echo build ok
