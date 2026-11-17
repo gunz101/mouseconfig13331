@@ -1,6 +1,6 @@
 # Bateria do fone Bluetooth na barra de tarefas — desenho
 
-**Data:** 2026-11-17 · **Status:** aprovado
+**Data:** 2026-11-17 · **Status:** implementado (v1.3)
 
 ## 1. Objetivo
 

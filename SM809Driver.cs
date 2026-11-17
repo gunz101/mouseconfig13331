@@ -16,8 +16,8 @@ using Microsoft.Win32.SafeHandles;
 // Nome exibido pelo Windows nas notificações e em Aplicativos de inicialização.
 [assembly: System.Reflection.AssemblyTitle("SM809 PRO")]
 [assembly: System.Reflection.AssemblyProduct("SM809 PRO — Driver Local")]
-[assembly: System.Reflection.AssemblyVersion("1.2.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.2.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.3.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.3.0.0")]
 
 namespace SM809
 {
@@ -2565,7 +2565,7 @@ namespace SM809
 
             page.Controls.Add(SectionAt("Sobre", 16, y)); y += 28;
             var about = new Label();
-            about.Text = "SM809 PRO — Driver Local v1.2\n" +
+            about.Text = "SM809 PRO — Driver Local v1.3\n" +
                 "Reimplementação do driver web oficial (driver.yuandaxin-tech.com)\n" +
                 "para uso offline. Protocolo documentado em PROTOCOLO.md.\n\n" +
                 "As configurações são gravadas na memória interna do mouse\n" +

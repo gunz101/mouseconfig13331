@@ -41,6 +41,14 @@ Passe o mouse por cima para ver os detalhes (modo e DPI); clique para abrir o
 configurador; o botão direito abre o menu. Com a barra de tarefas na vertical, o número
 aparece no ícone da bandeja.
 
+**Fone Bluetooth:** com um fone Bluetooth conectado, a bateria dele aparece ao lado da do
+mouse (`🖱 80%  🎧 90%`), com as mesmas cores e a mesma notificação. O valor é o mesmo que o
+Windows mostra em *Configurações → Bluetooth*: o app só lê o que o Windows já recebeu, nada é
+enviado ao fone. Funciona com fones que informam a bateria pelo Bluetooth (a maioria). Fones
+ligados por dongle USB 2.4G que não informam a bateria ao PC, como o SuperFrame Wind V2 pelo
+dongle, não aparecem; pareados por Bluetooth, aparecem. Para esconder, desmarque **Mostrar
+fones Bluetooth** no menu da bandeja.
+
 ### Bandeja e iniciar com o Windows
 
 - Fechar a janela (X) **não encerra** o app: ele fica na bandeja mostrando a bateria.
@@ -108,6 +116,7 @@ gerado por `tools/make-icon.ps1`.
 - `TaskbarBattery.cs` — a tira de bateria desenhada na barra de tarefas
 - `MapView.cs` — mapa dos botões (grade na disposição física do mouse)
 - `NavBar.cs` — barra lateral de seções
+- `BluetoothBattery.cs` — bateria dos fones Bluetooth, lida do que o Windows já guarda
 - `app.manifest`, `build.cmd`, `tools/make-icon.ps1`, `images/app.ico` — build e ícone
 - `PROTOCOLO.md` — protocolo HID completo do mouse (engenharia reversa do driver oficial)
 - `images/` — imagens do driver oficial (numeração dos botões)
