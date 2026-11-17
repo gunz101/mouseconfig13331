@@ -1,10 +1,5 @@
-// ============================================================================
-//  SM809 PRO — Driver Local (SOLAKAKA SM809 PRO / V1000_SM809)
-//  Reimplementação local do driver web oficial (driver.yuandaxin-tech.com).
-//  Grava a configuração DIRETAMENTE na memória do mouse via HID feature
-//  reports — o mesmo protocolo do site oficial. Ver PROTOCOLO.md.
-//  Compilar: csc /codepage:65001 /target:winexe /r:System.Web.Extensions.dll SM809Driver.cs
-// ============================================================================
+// SM809 PRO — driver local (SOLAKAKA SM809 PRO / V1000_SM809).
+// Grava a configuração na memória do mouse pelo protocolo HID do driver web oficial (PROTOCOLO.md).
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -26,9 +21,6 @@ using Microsoft.Win32.SafeHandles;
 
 namespace SM809
 {
-    // ========================================================================
-    //  P/Invoke HID / SetupAPI
-    // ========================================================================
     internal static class NativeHid
     {
         [StructLayout(LayoutKind.Sequential)]
@@ -134,9 +126,6 @@ namespace SM809
         public int InputLen;
     }
 
-    // ========================================================================
-    //  Dispositivo SM809 — enumeração, conexão, envio de comandos
-    // ========================================================================
     internal class DeviceStatus
     {
         public int LinkStatus;
@@ -292,7 +281,6 @@ namespace SM809
                     IntPtr.Zero, NativeHid.OPEN_EXISTING, 0, IntPtr.Zero);
                 if (h.IsInvalid) continue;
 
-                // valida: consegue ler o feature report de status (id 5)?
                 var buf = new byte[cand.FeatureLen];
                 buf[0] = 5;
                 if (!NativeHid.HidD_GetFeature(h, buf, buf.Length))
@@ -461,8 +449,6 @@ namespace SM809
             }
         }
 
-        // ---------------- Comandos de alto nível (protocolo oficial) --------
-
         // cmd 0x01 — remapeia os 16 botões (2 pacotes, ordem oficial).
         public bool ApplyButtons(byte[][] codes16)
         {
@@ -602,15 +588,12 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Protocolo — codificação de macros
-    // ========================================================================
     internal class MacroEvent
     {
         public string Type;   // "keydown" | "keyup" | "delay"
         public int Hid;       // uso HID (teclado 4..231, mouse 240..244)
         public int Delay;     // ms desde o evento ANTERIOR
-        public string Name;   // exibição
+        public string Name;
     }
 
     internal class MacroDef
@@ -696,9 +679,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Tabelas de teclas (HID Usage) e catálogo de funções
-    // ========================================================================
     internal class ActionDef
     {
         public string Name;
@@ -712,7 +692,6 @@ namespace SM809
 
     internal static class KeyTables
     {
-        // .NET Keys -> HID usage (teclado)
         public static int KeysToHid(Keys k)
         {
             if (k >= Keys.A && k <= Keys.Z) return 4 + (k - Keys.A);
@@ -804,7 +783,6 @@ namespace SM809
             return "0x" + hid.ToString("X2");
         }
 
-        // Nome amigável de um código de função (3 bytes)
         public static string CodeName(int[] code, List<MacroDef> macros, string macroId)
         {
             if (code == null || code.Length < 3) return "—";
@@ -1088,9 +1066,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  NumLock — as teclas do numpad só digitam números com ele ligado
-    // ========================================================================
     internal static class NumLockHelper
     {
         private const byte VK_NUMLOCK = 0x90;
@@ -1125,9 +1100,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Configuração local (JSON em %APPDATA%\SM809Local)
-    // ========================================================================
     public class ButtonCfg
     {
         public int Id;
@@ -1339,9 +1311,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Tema escuro
-    // ========================================================================
     internal static class Theme
     {
         // Paleta estilo Logitech G HUB: grafite + azul elétrico
@@ -1425,9 +1394,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Janela principal
-    // ========================================================================
     internal class MainForm : Form
     {
         private readonly Sm809Device _dev;
@@ -1447,26 +1413,21 @@ namespace SM809
         private TabControl _tabs;
         private System.Windows.Forms.Timer _uiTimer;
 
-        // DPI tab
         private NumericUpDown _dpiCount;
         private readonly RadioButton[] _dpiRadios = new RadioButton[6];
         private readonly NumericUpDown[] _dpiNums = new NumericUpDown[6];
         private readonly Button[] _dpiColorBtns = new Button[6];
 
-        // Desempenho
         private readonly List<RadioButton> _rateRadios = new List<RadioButton>();
         private FlowLayoutPanel _ratePanel;
         private RadioButton _lod1, _lod2;
         private NumericUpDown _sleepNum;
         private CheckBox _wakeChk, _ledMoveChk, _angleChk, _syncChk, _rippleChk;
 
-        // Iluminação
         private readonly List<RadioButton> _lightRadios = new List<RadioButton>();
 
-        // Macros
         private ListBox _macroList;
 
-        // Perfis
         private ComboBox _profileCombo;
         private CheckBox _autoStartChk;
         private bool _autoStartSync;
@@ -1558,7 +1519,6 @@ namespace SM809
             return Path.GetDirectoryName(Application.ExecutablePath);
         }
 
-        // ------------------------------------------------------------ header
         private Panel _header;
 
         private void BuildHeader()
@@ -1596,7 +1556,7 @@ namespace SM809
             _numLockLabel.Cursor = Cursors.Hand;
             _numLockLabel.Click += delegate
             {
-                NumLockHelper.Toggle();          // alterna: liga ⇄ desliga
+                NumLockHelper.Toggle();
                 UpdateNumLockIndicator();
                 Toast(NumLockHelper.IsOn
                     ? "✔ NumLock LIGADO — botões do numpad digitam números."
@@ -1636,7 +1596,6 @@ namespace SM809
             _numLockLabel.Location = new Point(_batteryLabel.Left - 28 - _numLockLabel.Width, 39);
         }
 
-        // -------------------------------------------------------- botom list
         private void BuildLeftPanel()
         {
             var panel = new Panel();
@@ -1746,7 +1705,6 @@ namespace SM809
             return -1;
         }
 
-        // -------------------------------------------------------- mouse pic
         private void BuildMousePanel()
         {
             var panel = new Panel();
@@ -1841,7 +1799,6 @@ namespace SM809
             }
         }
 
-        // ------------------------------------------------------------- tabs
         private void BuildTabs()
         {
             _tabs = new TabControl();
@@ -1882,7 +1839,6 @@ namespace SM809
             return page;
         }
 
-        // ------------------------------------------------------ aba Atribuir
         private TabPage BuildAssignTab()
         {
             var page = MakePage("Atribuir");
@@ -2056,7 +2012,6 @@ namespace SM809
                 }
                 bool ok = _dev.ApplyButtons(codes);
 
-                // macros atribuídas
                 var assigns = new List<KeyValuePair<int, MacroDef>>();
                 foreach (var btn in _cfg.Buttons)
                 {
@@ -2076,7 +2031,6 @@ namespace SM809
             }
         }
 
-        // ---------------------------------------------------------- aba DPI
         private TabPage BuildDpiTab()
         {
             var page = MakePage("DPI");
@@ -2202,7 +2156,6 @@ namespace SM809
             finally { Cursor = Cursors.Default; }
         }
 
-        // -------------------------------------------------- aba Desempenho
         private TabPage BuildPerfTab()
         {
             var page = MakePage("Desemp.");
@@ -2361,7 +2314,6 @@ namespace SM809
             Toast(ok ? "✔ Sensor aplicado." : "Falha ao aplicar sensor.", ok);
         }
 
-        // -------------------------------------------------- aba Iluminação
         private TabPage BuildLightTab()
         {
             var page = MakePage("LED");
@@ -2416,7 +2368,6 @@ namespace SM809
             Toast(ok ? "✔ Iluminação aplicada." : "Falha ao aplicar iluminação.", ok);
         }
 
-        // ------------------------------------------------------ aba Macros
         private TabPage BuildMacroTab()
         {
             var page = MakePage("Macros");
@@ -2631,7 +2582,6 @@ namespace SM809
             return r;
         }
 
-        // ----------------------------------------------------- aba Sistema
         private TabPage BuildSystemTab()
         {
             var page = MakePage("Sistema");
@@ -2730,7 +2680,6 @@ namespace SM809
             return page;
         }
 
-        // ---------------------------------------------------------- perfis
         private static string ProfileDir()
         {
             return Path.Combine(LocalConfig.ConfigDir, "profiles");
@@ -2807,7 +2756,6 @@ namespace SM809
             catch { }
         }
 
-        // Regrava a configuração completa no mouse (botões, DPI, desempenho, LED).
         private void ReapplyAll()
         {
             ApplyButtonsToDevice("Configuração completa");
@@ -2853,7 +2801,6 @@ namespace SM809
             UpdateNumLockIndicator();
         }
 
-        // ------------------------------------------------------- status bar
         private void BuildStatusBar()
         {
             var bar = new Panel();
@@ -2872,9 +2819,7 @@ namespace SM809
 
         private bool _lastNumLock = true;
 
-        // Botão de alternância no topo: sempre visível, liga E desliga o NumLock.
-        // Quando o estado muda, a lista de botões é re-renderizada para mostrar a
-        // função REAL de cada tecla naquele momento.
+        // Quando o NumLock muda, a lista é redesenhada com a função real de cada tecla.
         private void UpdateNumLockIndicator()
         {
             bool on = NumLockHelper.IsOn;
@@ -2896,7 +2841,6 @@ namespace SM809
             _statusLabel.ForeColor = ok ? Theme.Accent : Color.FromArgb(240, 200, 90);
         }
 
-        // ---------------------------------------------------------- conexão
         private void Reconnect()
         {
             bool ok = _dev.Connect();
@@ -2988,7 +2932,6 @@ namespace SM809
                             _dpiRadios[s.CurrentLevel].Checked = true;
                             changed = true;
                         }
-                        // taxa de retorno vigente no mouse
                         if (s.CurrentReportRate != 0 && s.CurrentReportRate != _cfg.PollRate)
                         {
                             _cfg.PollRate = s.CurrentReportRate;
@@ -3027,7 +2970,6 @@ namespace SM809
             }
         }
 
-        // --------------------------------------------------------- helpers
         private Label SectionAt(string text, int x, int y)
         {
             var l = Theme.MakeSection(text);
@@ -3089,9 +3031,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Diálogo: atalho de teclado
-    // ========================================================================
     internal class ComboKeyDialog : Form
     {
         public int MainHid;
@@ -3215,9 +3154,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Diálogo: tecla de fogo
-    // ========================================================================
     internal class FireKeyDialog : Form
     {
         public int Interval = 50;
@@ -3281,9 +3217,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Diálogo: editor de macro
-    // ========================================================================
     internal class MacroDialog : Form
     {
         public MacroDef Result;
@@ -3345,7 +3278,6 @@ namespace SM809
             Controls.Add(_events);
             RefreshEvents();
 
-            // inserções manuais
             var dl = new Label();
             dl.Text = "Atraso (ms):";
             dl.AutoSize = true;
@@ -3415,7 +3347,6 @@ namespace SM809
             clearBtn.Click += delegate { _macro.Events.Clear(); RefreshEvents(); };
             Controls.Add(clearBtn);
 
-            // modo de execução
             var em = Theme.MakeSection("Modo de execução");
             em.Location = new Point(16, 386);
             Controls.Add(em);
@@ -3579,9 +3510,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Diálogo: entrada de texto simples
-    // ========================================================================
     internal class InputDialog : Form
     {
         public string Value = "";
@@ -3626,9 +3554,6 @@ namespace SM809
         }
     }
 
-    // ========================================================================
-    //  Entry point
-    // ========================================================================
     internal static class Program
     {
         private const string MutexName = "SM809LocalDriver";
