@@ -101,9 +101,6 @@ namespace SM809
         [DllImport("hid.dll")]
         public static extern bool HidD_GetFeature(SafeFileHandle h, byte[] data, int len);
 
-        [DllImport("hid.dll", CharSet = CharSet.Unicode)]
-        public static extern bool HidD_GetProductString(SafeFileHandle h, byte[] buffer, int len);
-
         [DllImport("setupapi.dll", CharSet = CharSet.Auto)]
         public static extern IntPtr SetupDiGetClassDevs(ref Guid classGuid, IntPtr enumerator, IntPtr hwndParent, int flags);
 
@@ -1111,11 +1108,6 @@ namespace SM809
         public static void TurnOn()
         {
             if (!IsOn) Toggle();
-        }
-
-        public static void TurnOff()
-        {
-            if (IsOn) Toggle();
         }
 
         public static void Toggle()
